@@ -3,6 +3,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import ma.atm.dataingestionservice.exception.MessageProcessingException;
+import ma.atm.dataingestionservice.integration.ConfigurationIntegrationEvent;
 import ma.atm.dataingestionservice.model.ConfigurationMessage;
 import ma.atm.dataingestionservice.pulsar.producer.ProcessedMessagePublisher;
 import ma.atm.dataingestionservice.service.ConfigurationMessageService;
@@ -44,11 +45,5 @@ public class ConfigurationMessageServiceImpl implements ConfigurationMessageServ
 
             // Publish to the internal Pulsar topic
         processedMessagePublisher.publishConfigurationEvent(message);
-
-
-
-
-        // TODO: Add validation logic for peripheral data
-        // TODO: Publish processed event to internal Pulsar topic (e.g., internal-atm-configuration-events)
     }
 }

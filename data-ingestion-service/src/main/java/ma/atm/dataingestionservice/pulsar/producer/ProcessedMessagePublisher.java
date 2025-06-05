@@ -2,6 +2,7 @@ package ma.atm.dataingestionservice.pulsar.producer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import ma.atm.dataingestionservice.integration.ConfigurationIntegrationEvent;
 import ma.atm.dataingestionservice.model.ConfigurationMessage;
 import ma.atm.dataingestionservice.model.CounterMessage;
 import ma.atm.dataingestionservice.model.StatusMessage;
@@ -16,7 +17,13 @@ import org.springframework.stereotype.Service;
 public class ProcessedMessagePublisher {
 
     @Autowired
-    private PulsarTemplate<String> pulsarTemplate; // Only need String template
+    private PulsarTemplate<ConfigurationMessage> configTemplate;
+    @Autowired
+    private PulsarTemplate<StatusMessage> statusTemplate;
+    @Autowired
+    private PulsarTemplate<CounterMessage> counterTemplate;
+    @Autowired
+    private PulsarTemplate<TransactionMessage> transactionTemplate; // Only need String template
 
     @Autowired
     private ObjectMapper objectMapper; // Add ObjectMapper for JSON conversion
@@ -38,7 +45,7 @@ public class ProcessedMessagePublisher {
     public void publishStatusEvent(StatusMessage event) {
         try {
             String jsonMessage = objectMapper.writeValueAsString(event);
-            pulsarTemplate.send(status_topic, jsonMessage);
+            statusTemplate.send(status_topic, event);
             log.info("Published status event to topic {}: {}", status_topic, jsonMessage);
         } catch (Exception e) {
             log.error("Failed to publish status event to topic {}: {}", status_topic, e.getMessage(), e);
@@ -49,8 +56,8 @@ public class ProcessedMessagePublisher {
     public void publishConfigurationEvent(ConfigurationMessage event) {
         try {
             String jsonMessage = objectMapper.writeValueAsString(event);
-            pulsarTemplate.send(configuration_topic, jsonMessage);
-            log.info("Published configuration event to topic {}: {}", configuration_topic, jsonMessage);
+            configTemplate.send(configuration_topic, event);
+            log.info("Published configuration event to topic {}: {}", configuration_topic, event);
         } catch (Exception e) {
             log.error("Failed to publish configuration event to topic {}: {}", configuration_topic, e.getMessage(), e);
         }
@@ -60,7 +67,7 @@ public class ProcessedMessagePublisher {
     public void publishCounterEvent(CounterMessage event) {
         try {
             String jsonMessage = objectMapper.writeValueAsString(event);
-            pulsarTemplate.send(counter_topic, jsonMessage);
+            counterTemplate.send(counter_topic, event);
             log.info("Published counter event to topic {}: {}", counter_topic, jsonMessage);
         } catch (Exception e) {
             log.error("Failed to publish counter event to topic {}: {}", counter_topic, e.getMessage(), e);
@@ -71,7 +78,7 @@ public class ProcessedMessagePublisher {
     public void publishTransactionEvent(TransactionMessage event) {
         try {
             String jsonMessage = objectMapper.writeValueAsString(event);
-            pulsarTemplate.send(transaction_topic, jsonMessage);
+            transactionTemplate.send(transaction_topic, event);
             log.info("Published transaction event to topic {}: {}", transaction_topic, jsonMessage);
         } catch (Exception e) {
             log.error("Failed to publish transaction event to topic {}: {}", transaction_topic, e.getMessage(), e);

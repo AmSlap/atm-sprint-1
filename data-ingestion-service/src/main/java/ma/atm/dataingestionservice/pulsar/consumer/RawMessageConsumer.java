@@ -23,6 +23,7 @@ public class RawMessageConsumer {
             topics = "${pulsar.consumer.topic}",
             subscriptionName = "${pulsar.consumer.subscription-name}",
             subscriptionType = SubscriptionType.Exclusive
+
     )
     public void consumeAtmEvent(String event) throws MessageProcessingException {
         log.info("Received ATM event: {}", event);

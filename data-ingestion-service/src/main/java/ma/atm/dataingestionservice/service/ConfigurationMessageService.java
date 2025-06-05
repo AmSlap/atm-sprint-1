@@ -1,6 +1,7 @@
 package ma.atm.dataingestionservice.service;
 
 import ma.atm.dataingestionservice.exception.MessageProcessingException;
+import ma.atm.dataingestionservice.integration.ConfigurationIntegrationEvent;
 import ma.atm.dataingestionservice.model.ConfigurationMessage;
 
 /**

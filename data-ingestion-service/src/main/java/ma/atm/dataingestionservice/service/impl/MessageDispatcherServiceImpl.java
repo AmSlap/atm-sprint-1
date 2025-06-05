@@ -3,6 +3,7 @@ package ma.atm.dataingestionservice.service.impl;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ma.atm.dataingestionservice.exception.MessageProcessingException;
+import ma.atm.dataingestionservice.integration.ConfigurationIntegrationEvent;
 import ma.atm.dataingestionservice.model.*;
 import ma.atm.dataingestionservice.service.*;
 import org.slf4j.Logger;

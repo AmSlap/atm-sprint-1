@@ -21,5 +21,5 @@ public class ConfigurationMessage extends BaseAtmMessage {
     // Key: Peripheral name (e.g., "cardReader", "receiptPrinter")
     // Value: Another Map or a specific object representing the peripheral's status details
     @JsonProperty("peripherals")
-    private JsonNode peripherals;
+    private Map<String, Object> peripherals;
 }

@@ -17,13 +17,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+
+
+
 @Service
 public class CounterHandlerService {
 
     private static final Logger log = LoggerFactory.getLogger(CounterHandlerService.class);
     private final AtmCounterRepository atmCounterRepository;
 
-    @Autowired
     public CounterHandlerService(AtmCounterRepository atmCounterRepository) {
         this.atmCounterRepository = atmCounterRepository;
     }
@@ -40,20 +42,24 @@ public class CounterHandlerService {
         counterSummary.setRejectBinPercentageFull(event.getRejectBin() != null ? event.getRejectBin().getPercentageFull() : null);
         counterSummary.setLastUpdateTimestamp(event.getTimestamp() != null ? event.getTimestamp().atOffset(ZoneOffset.UTC) : OffsetDateTime.now(ZoneOffset.UTC));
 
-        // Update Cassette details
+        // Update Cassette details using unique cassetteId
         List<Cassette> updatedCassettes = new ArrayList<>();
         boolean isLowCash = false;
         if (event.getCassettes() != null) {
             for (Cassette info : event.getCassettes()) {
-                Cassette cassette = findOrCreateCassette(counterSummary);
-                cassette.setAtmCounter(counterSummary); // Ensure back-reference is set
+                Cassette cassette = findOrCreateCassette(counterSummary, info.getCassetteId());
+                cassette.setAtmCounter(counterSummary);
+                cassette.setCassetteId(info.getCassetteId()); // Unique identifier
                 cassette.setDenomination(info.getDenomination());
                 cassette.setCurrency(info.getCurrency());
                 cassette.setNotesRemaining(info.getNotesRemaining());
                 cassette.setCassetteStatus(info.getCassetteStatus());
+                cassette.setTotalAmount(info.getTotalAmount());
+                cassette.setRejectCount(info.getRejectCount());
+                cassette.setDispensedSinceRefill(info.getDispensedSinceRefill());
                 updatedCassettes.add(cassette);
 
-                // Example Low Cash Logic (adjust threshold as needed)
+                // Low Cash Logic
                 if ("OK".equalsIgnoreCase(info.getCassetteStatus()) && info.getNotesRemaining() != null && info.getNotesRemaining() < 200) {
                     isLowCash = true;
                 }
@@ -62,13 +68,13 @@ public class CounterHandlerService {
                 }
             }
         }
-        // Manage the collection: replace old list with new one
+
+        // Replace cassette list
         if(counterSummary.getCassettes() == null) {
             counterSummary.setCassettes(new ArrayList<>());
         }
         counterSummary.getCassettes().clear();
         counterSummary.getCassettes().addAll(updatedCassettes);
-
         counterSummary.setLowCashFlag(isLowCash);
 
         atmCounterRepository.save(counterSummary);
@@ -76,17 +82,16 @@ public class CounterHandlerService {
         log.info(String.valueOf(event));
     }
 
-    // Helper to find existing cassette in the list or create a new one
-    private Cassette findOrCreateCassette(AtmCounter counterSummary) {
-        if (counterSummary.getCassettes() != null) {
+    // New helper method that looks up by cassetteId in the counterSummary
+    private Cassette findOrCreateCassette(AtmCounter counterSummary, String cassetteId) {
+        if (counterSummary.getCassettes() != null && cassetteId != null) {
             Optional<Cassette> existing = counterSummary.getCassettes().stream()
+                    .filter(c -> cassetteId.equals(c.getCassetteId()))
                     .findFirst();
             if (existing.isPresent()) {
                 return existing.get();
             }
         }
-        // Not found or list is null, create new
-        Cassette newCassette = new Cassette();
-        return newCassette;
+        return new Cassette();
     }
 }

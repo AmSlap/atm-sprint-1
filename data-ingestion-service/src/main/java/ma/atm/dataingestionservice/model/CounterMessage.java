@@ -38,34 +38,6 @@ public class CounterMessage extends BaseAtmMessage {
     /**
      * Represents a single cassette in the ATM.
      */
-    @Data
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class Cassette {
-        @JsonProperty("cassetteId")
-        private Integer cassetteId;
-        
-        @JsonProperty("denomination")
-        private Integer denomination;
-        
-        @JsonProperty("currency")
-        private String currency;
-        
-        @JsonProperty("notesRemaining")
-        private Integer notesRemaining;
-        
-        @JsonProperty("totalAmount")
-        private Long totalAmount;
-        
-        @JsonProperty("status")
-        private String status;
-        
-        @JsonProperty("rejectCount")
-        private Integer rejectCount;
-        
-        @JsonProperty("dispensedSinceRefill")
-        private Integer dispensedSinceRefill;
-    }
-    
     /**
      * Represents the reject bin in the ATM.
      */

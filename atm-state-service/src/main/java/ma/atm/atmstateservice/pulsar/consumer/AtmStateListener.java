@@ -5,13 +5,12 @@ import lombok.extern.slf4j.Slf4j;
 import ma.atm.atmstateservice.event.AtmConfigurationChangedEvent;
 import ma.atm.atmstateservice.event.AtmCountersUpdatedEvent;
 import ma.atm.atmstateservice.event.AtmStatusUpdatedEvent;
-import ma.atm.atmstateservice.integration.ConfigurationIntegrationEvent;
-import ma.atm.atmstateservice.model.AtmConfiguration;
 import ma.atm.atmstateservice.service.ConfigurationHandlerService;
 import ma.atm.atmstateservice.service.CounterHandlerService;
 import ma.atm.atmstateservice.service.StatusHandlerService;
 import ma.atm.atmstateservice.test.ConfigurationMessage;
 import org.apache.pulsar.client.api.SubscriptionType;
+import org.apache.pulsar.common.schema.SchemaType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.pulsar.annotation.PulsarListener;
 import org.springframework.stereotype.Service;
@@ -34,11 +33,14 @@ public class AtmStateListener {
     @PulsarListener(
             topics = "${pulsar.consumer.configuration-topic}",
             subscriptionName = "${pulsar.consumer.subscription-name}",
+            schemaType = SchemaType.JSON,
             subscriptionType = SubscriptionType.Exclusive
     )
-    public void consumeAtmConfigurationMessage(AtmConfiguration event) {
-        log.info("Received ATM Configuration change: {}", event);
-        log.info("Processing ATM Configuration change for ATM ID: {}", event.getPeripheralDetails());
+    public void consumeAtmConfigurationMessage(AtmConfigurationChangedEvent event) {
+        log.info("Received ATM Configuration change: {}", event.getAtmId());
+        log.info("the config: {}", event.getPeripherals());
+
+        configurationHandlerService.processConfigurationChange(event);
 
     }
 

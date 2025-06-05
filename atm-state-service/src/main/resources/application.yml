@@ -24,8 +24,18 @@ spring:
 # Logging Levels (Optional)
 logging:
   level:
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    # Set your base package to DEBUG/INFO as needed
+    com.atmmonitoring.state: DEBUG
+
+    # Enable DEBUG for Spring Pulsar core components
+    org.springframework.pulsar: DEBUG
+
+    # Enable DEBUG for Jackson databind to see deserialization details/errors
+    com.fasterxml.jackson.databind: DEBUG
+
+    # Keep Hibernate logging if useful
+    org.hibernate.SQL: INFO # Or DEBUG
+    # org.hibernate.type.descriptor.sql.BasicBinder: TRACE
   pulsar:
     client:
       service-url: pulsar://localhost:6650
@@ -46,3 +56,5 @@ pulsar:
     subscription-name: atm-state-service-subscription
 server:
   port: 8086
+
+

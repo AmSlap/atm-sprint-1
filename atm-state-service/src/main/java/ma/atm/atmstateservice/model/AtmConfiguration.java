@@ -1,6 +1,5 @@
 package ma.atm.atmstateservice.model;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode; // Import Jackson's JsonNode
 import io.hypersistence.utils.hibernate.type.json.JsonType; // Import from hibernate-types
 import jakarta.persistence.*;
@@ -10,6 +9,7 @@ import lombok.AllArgsConstructor;
 import org.hibernate.annotations.Type;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 
 @Entity
 @Table(name = "atm_configuration")
@@ -26,8 +26,8 @@ public class AtmConfiguration {
     // The @Type annotation tells Hibernate how to handle the mapping
     @Type(JsonType.class)
     @Column(name = "peripheral_details", columnDefinition = "jsonb")
-    @JsonProperty("peripherals")
-    private JsonNode peripheralDetails; // Using Jackson's JsonNode to represent the JSON
+
+    private Map<String, Object> peripheralDetails; // Using Jackson's JsonNode to represent the JSON
 
     // Optional: You might still want a calculated overall health field
     @Column(name = "overall_health")

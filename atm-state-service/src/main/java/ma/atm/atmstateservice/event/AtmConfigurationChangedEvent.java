@@ -7,8 +7,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
+import org.apache.pulsar.shade.com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import org.apache.pulsar.shade.com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
+import java.util.Map;
 
 @Data
 @NoArgsConstructor
@@ -23,9 +26,8 @@ public class AtmConfigurationChangedEvent {
     @JsonProperty("timestamp")
     private Instant timestamp;
 
-    // Field specific to ConfigurationMessage
+    // Tells Jackson to deserialize the JSON into an ObjectNode (a concrete subclass of JsonNode)
+    // Using a Map to store peripherals data
     @JsonProperty("peripherals")
-    private JsonNode peripherals;
-
-
+    private Map<String, Object> peripherals;
 }

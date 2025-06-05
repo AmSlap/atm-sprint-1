@@ -55,7 +55,12 @@ public class ProcessedMessagePublisher {
     // Method for ConfigurationMessage
     public void publishConfigurationEvent(ConfigurationMessage event) {
         try {
-            String jsonMessage = objectMapper.writeValueAsString(event);
+            // Convert the message object to JSON string
+            String jsonPayload = objectMapper.writeValueAsString(event);
+
+            // Log the exact JSON string being published
+            log.info("Publishing JSON to internal-atm-configuration-events: {}", jsonPayload);
+
             configTemplate.send(configuration_topic, event);
             log.info("Published configuration event to topic {}: {}", configuration_topic, event);
         } catch (Exception e) {

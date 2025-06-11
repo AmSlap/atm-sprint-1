@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: data-ingestion-service
+  pulsar:
+    client:
+      service-url: pulsar://localhost:6650
+    producer:
+      send-timeout-ms: 10000
+    consumer:
+      dead-letter-policy-max-redeliver-count: 3
+    admin:
+      service-url: http://localhost:8080
+
+pulsar:
+  consumer:
+    topic: atm-raw-data
+    subscription-name: atm-ingestion-service
+
+  producer:
+    status-topic: internal-atm-status-events
+    configuration-topic: internal-atm-configuration-events
+    counter-topic: internal-atm-counter-events
+    transaction-topic: internal-atm-transaction-events
+
+
+server:
+  port: 8083

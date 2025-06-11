@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: atm-state-service
+    # Database Connection Properties
+  datasource:
+    url: jdbc:postgresql://localhost:5432/atm_state_db
+    username: postgres
+    password: foo
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    # Schema Generation (Choose ONE strategy)
+    hibernate:
+      # Option 1: Automatic (Good for quick development/testing, NOT recommended for production)
+      ddl-auto: update
+      # Option 2: Using Migration Tools (Recommended for Dev/Prod) - Set to 'validate' or 'none'
+      # ddl-auto: validate
+    # Show SQL statements in logs (Optional, useful for debugging)
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+# Logging Levels (Optional)
+logging:
+  level:
+    # Set your base package to DEBUG/INFO as needed
+    com.atmmonitoring.state: DEBUG
+
+    # Enable DEBUG for Spring Pulsar core components
+    org.springframework.pulsar: DEBUG
+
+    # Enable DEBUG for Jackson databind to see deserialization details/errors
+    com.fasterxml.jackson.databind: DEBUG
+
+    # Keep Hibernate logging if useful
+    org.hibernate.SQL: INFO # Or DEBUG
+    # org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pulsar:
+    client:
+      service-url: pulsar://localhost:6650
+    producer:
+      send-timeout-ms: 10000
+    consumer:
+      dead-letter-policy-max-redeliver-count: 3
+    admin:
+      service-url: http://localhost:8080
+
+pulsar:
+  consumer:
+    status-topic: internal-atm-status-events
+    configuration-topic: internal-atm-configuration-events
+    counter-topic: internal-atm-counter-events
+    transaction-topic: internal-atm-transaction-events
+
+    subscription-name: atm-state-service-subscription
+server:
+  port: 8086
+
+
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+

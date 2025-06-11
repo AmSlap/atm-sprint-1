@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: atm-api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: atm-registry-atms
+          uri: lb://ATM-REGISTRY-SERVICE
+          predicates:
+            - Path=/api/registry/atms/**
+        - id: atm-registry-agencies
+          uri: lb://ATM-REGISTRY-SERVICE
+          predicates:
+            - Path=/api/registry/agencies/**
+        - id: atm-state-service
+          uri: lb://ATM-STATE-SERVICE
+          predicates:
+            - Path=/api/state/atms/**
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+
+server:
+  port: 8082

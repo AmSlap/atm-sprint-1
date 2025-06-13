@@ -47,8 +47,8 @@ public class AtmRegistryService {
         if (atmInfoRepository.existsById(atmInfo.getAtmId())) {
             throw new IllegalArgumentException("ATM with ID " + atmInfo.getAtmId() + " already exists.");
         }
-        Agency agency = findAgencyByCode(agencyCode);
-        atmInfo.setAgency(agency); // Set the relationship
+        //Agency agency = findAgencyByCode(agencyCode);
+        //atmInfo.setAgency(agency); // Set the relationship
         return atmInfoRepository.save(atmInfo);
     }
 

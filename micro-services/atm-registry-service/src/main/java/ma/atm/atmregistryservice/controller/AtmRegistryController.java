@@ -31,45 +31,6 @@ public class AtmRegistryController {
         this.agencyService = agencyService;
     }
 
-    // Convert ATM entity to DTO
-    private AtmInfoDto convertToDto(AtmInfo atmInfo) {
-        AtmInfoDto dto = new AtmInfoDto();
-        dto.setAtmId(atmInfo.getAtmId());
-        dto.setSerialNumber(atmInfo.getSerialNumber());
-        dto.setBrand(atmInfo.getBrand());
-        dto.setModel(atmInfo.getModel());
-        dto.setLabel(atmInfo.getLabel());
-        dto.setIpAddress(atmInfo.getIpAddress());
-        dto.setRegion(atmInfo.getRegion());
-        dto.setLocationAddress(atmInfo.getLocationAddress());
-        dto.setLocationLatitude(atmInfo.getLocationLatitude());
-        dto.setLocationLongitude(atmInfo.getLocationLongitude());
-
-        // Handle agency relationship
-        if (atmInfo.getAgency() != null) {
-            dto.setAgencyCode(atmInfo.getAgency().getAgencyCode());
-            dto.setAgencyName(atmInfo.getAgency().getAgencyName());
-        }
-
-        return dto;
-    }
-
-    // Convert DTO to entity
-    private AtmInfo convertToEntity(AtmInfoDto dto) {
-        AtmInfo entity = new AtmInfo();
-        entity.setAtmId(dto.getAtmId());
-        entity.setSerialNumber(dto.getSerialNumber());
-        entity.setBrand(dto.getBrand());
-        entity.setModel(dto.getModel());
-        entity.setLabel(dto.getLabel());
-        entity.setIpAddress(dto.getIpAddress());
-        entity.setRegion(dto.getRegion());
-        entity.setLocationAddress(dto.getLocationAddress());
-        entity.setLocationLatitude(dto.getLocationLatitude());
-        entity.setLocationLongitude(dto.getLocationLongitude());
-        // Agency will be set in the service layer
-        return entity;
-    }
 
     @PostMapping
     public ResponseEntity<?> createAtm(@RequestBody AtmInfoDto atmInfoDto) {
@@ -131,5 +92,47 @@ public class AtmRegistryController {
         return atmRegistryService.atmExists(atmId) ?
                 ResponseEntity.ok().build() :
                 ResponseEntity.notFound().build();
+    }
+
+
+
+    // Convert ATM entity to DTO
+    private AtmInfoDto convertToDto(AtmInfo atmInfo) {
+        AtmInfoDto dto = new AtmInfoDto();
+        dto.setAtmId(atmInfo.getAtmId());
+        dto.setSerialNumber(atmInfo.getSerialNumber());
+        dto.setBrand(atmInfo.getBrand());
+        dto.setModel(atmInfo.getModel());
+        dto.setLabel(atmInfo.getLabel());
+        dto.setIpAddress(atmInfo.getIpAddress());
+        dto.setRegion(atmInfo.getRegion());
+        dto.setLocationAddress(atmInfo.getLocationAddress());
+        dto.setLocationLatitude(atmInfo.getLocationLatitude());
+        dto.setLocationLongitude(atmInfo.getLocationLongitude());
+
+        // Handle agency relationship
+        if (atmInfo.getAgency() != null) {
+            dto.setAgencyCode(atmInfo.getAgency().getAgencyCode());
+            dto.setAgencyName(atmInfo.getAgency().getAgencyName());
+        }
+
+        return dto;
+    }
+
+    // Convert DTO to entity
+    private AtmInfo convertToEntity(AtmInfoDto dto) {
+        AtmInfo entity = new AtmInfo();
+        entity.setAtmId(dto.getAtmId());
+        entity.setSerialNumber(dto.getSerialNumber());
+        entity.setBrand(dto.getBrand());
+        entity.setModel(dto.getModel());
+        entity.setLabel(dto.getLabel());
+        entity.setIpAddress(dto.getIpAddress());
+        entity.setRegion(dto.getRegion());
+        entity.setLocationAddress(dto.getLocationAddress());
+        entity.setLocationLatitude(dto.getLocationLatitude());
+        entity.setLocationLongitude(dto.getLocationLongitude());
+        // Agency will be set in the service layer
+        return entity;
     }
 }

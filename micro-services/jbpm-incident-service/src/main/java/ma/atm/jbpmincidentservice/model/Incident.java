@@ -98,6 +98,9 @@ public class Incident {
 
     // Helper methods
     public void addTask(IncidentTask task) {
+        if (tasks == null) {
+            tasks = new ArrayList<>();
+        }
         tasks.add(task);
         task.setIncident(this);
     }

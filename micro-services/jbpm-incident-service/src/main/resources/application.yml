@@ -2,7 +2,7 @@ spring:
   application:
     name: jbpm-incident-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/atm_state_db
+    url: jdbc:postgresql://localhost:5432/atm-incident-db
     username: postgres
     password: foo
     driver-class-name: org.postgresql.Driver

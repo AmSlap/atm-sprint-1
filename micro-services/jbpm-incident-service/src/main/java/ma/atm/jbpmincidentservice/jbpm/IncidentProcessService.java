@@ -2,18 +2,34 @@ package ma.atm.jbpmincidentservice.jbpm;
 
 
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.transaction.Transactional;
+import ma.atm.jbpmincidentservice.dto.IncidentDto;
+import ma.atm.jbpmincidentservice.dto.IncidentReport;
+import ma.atm.jbpmincidentservice.dto.IncidentStatistics;
+import ma.atm.jbpmincidentservice.dto.IncidentTaskDto;
+import ma.atm.jbpmincidentservice.model.Incident;
+import ma.atm.jbpmincidentservice.model.IncidentTask;
+import ma.atm.jbpmincidentservice.model.enums.IncidentStatus;
+import ma.atm.jbpmincidentservice.model.enums.IncidentType;
+import ma.atm.jbpmincidentservice.model.enums.TaskStatus;
+import ma.atm.jbpmincidentservice.repository.IncidentRepository;
+import ma.atm.jbpmincidentservice.repository.IncidentTaskRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.*;
-import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 
@@ -34,37 +50,77 @@ public class IncidentProcessService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    public IncidentProcessService() {
+    // Database repositories
+    private final IncidentRepository incidentRepository;
+    private final IncidentTaskRepository taskRepository;
+
+    public IncidentProcessService(IncidentRepository incidentRepository, IncidentTaskRepository taskRepository) {
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
+        this.incidentRepository = incidentRepository;
+        this.taskRepository = taskRepository;
     }
 
-    // ====================== PROCESS OPERATIONS ======================
+    // ====================== CONSTANTS FOR INCIDENT TYPES ======================
+    public static final String INCIDENT_TYPE_UNDER_MAINTENANCE = "under_maintenance";
+    public static final String INCIDENT_TYPE_OUTSIDE_MAINTENANCE_UNDER_INSURANCE = "outside_maintenance_under_insurance";
+    public static final String INCIDENT_TYPE_OUTSIDE_MAINTENANCE_OUTSIDE_INSURANCE = "outside_maintenance_outside_insurance";
+
+    // ====================== PROCESS OPERATIONS WITH PERSISTENCE ======================
 
     /**
-     * Starts a new incident management process
+     * Starts a new incident management process with database tracking
      * POST /server/containers/{containerId}/processes/{processId}/instances
      */
-    public Long startIncidentProcess(String atmId, String errorType, String incidentDescription) {
+    public IncidentDto startIncidentProcess(String atmId, String errorType, String incidentDescription) {
+        return startIncidentProcess(atmId, errorType, incidentDescription, "system");
+    }
+
+    public IncidentDto startIncidentProcess(String atmId, String errorType, String incidentDescription, String createdBy) {
         try {
             String url = KIE_SERVER_URL + "/containers/" + CONTAINER_ID + "/processes/" + PROCESS_ID + "/instances";
-
+            String incidentNumber = generateIncidentNumber();
             Map<String, Object> processVariables = Map.of(
                     "atmId", atmId,
                     "errorType", errorType,
-                    "incidentDescription", incidentDescription
+                    "incidentDescription", incidentDescription,
+                    "incidentNumber", incidentNumber
             );
 
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(processVariables, createHeaders());
             Long processInstanceId = restTemplate.postForObject(url, requestEntity, Long.class);
 
-            LOGGER.info("Started incident process for ATM: {}, Process Instance ID: {}", atmId, processInstanceId);
-            return processInstanceId;
+            // Create database record
+            Incident incident = Incident.builder()
+                    .incidentNumber(incidentNumber)
+                    .processInstanceId(processInstanceId)
+                    .atmId(atmId)
+                    .errorType(errorType)
+                    .incidentDescription(incidentDescription)
+                    .status(IncidentStatus.CREATED)
+                    .createdBy(createdBy)
+                    .build();
+
+            incident = incidentRepository.save(incident);
+
+            LOGGER.info("Started incident process for ATM: {}, Process Instance ID: {}, Incident Number: {}",
+                    atmId, processInstanceId, incident.getIncidentNumber());
+
+            return convertToDto(incident);
 
         } catch (Exception e) {
             LOGGER.error("Error starting incident process for ATM: {}", atmId, e);
             throw new RuntimeException("Failed to start incident process", e);
         }
+    }
+    /**
+     * Get incident by ID
+     */
+    @Transactional
+    public IncidentDto getIncidentById(Long id) {
+        Incident incident = incidentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Incident not found with id: " + id));
+        return convertToDto(incident);
     }
 
     /**
@@ -91,7 +147,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Aborts a process instance
+     * Aborts a process instance with database update
      * DELETE /server/containers/{containerId}/processes/instances/{processInstanceId}
      */
     public void abortProcessInstance(Long processInstanceId) {
@@ -100,6 +156,13 @@ public class IncidentProcessService {
 
             HttpEntity<?> requestEntity = new HttpEntity<>(createHeaders());
             restTemplate.exchange(url, HttpMethod.DELETE, requestEntity, Void.class);
+
+            // Update database
+            incidentRepository.findByProcessInstanceId(processInstanceId)
+                    .ifPresent(incident -> {
+                        incident.setStatus(IncidentStatus.ABORTED);
+                        incidentRepository.save(incident);
+                    });
 
             LOGGER.info("Aborted process instance: {}", processInstanceId);
 
@@ -115,29 +178,17 @@ public class IncidentProcessService {
      * Get tasks for potential owners (tasks available to claim)
      * GET /server/queries/tasks/instances/pot-owners
      */
+    @Transactional
     public List<Map<String, Object>> getTasksForPotentialOwners(String group) {
         try {
             StringBuilder urlBuilder = new StringBuilder(KIE_SERVER_URL + "/queries/tasks/instances/pot-owners");
 
-            boolean hasParams = false;
-
             if (group != null && !group.isEmpty()) {
                 urlBuilder.append("?groups=").append(group);
-                hasParams = true;
             }
-
-            // Actually use the page and pageSize parameters
-           /* if (page >= 0) {
-                urlBuilder.append(hasParams ? "&" : "?").append("page=").append(page);
-                hasParams = true;
-            }
-
-            if (pageSize > 0) {
-                urlBuilder.append(hasParams ? "&" : "?").append("pageSize=").append(pageSize);
-            }*/
 
             String url = urlBuilder.toString();
-            System.out.println("Final URL: " + url);
+            LOGGER.debug("Task query URL: {}", url);
 
             HttpEntity<?> requestEntity = new HttpEntity<>(createHeaders());
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
@@ -148,7 +199,15 @@ public class IncidentProcessService {
             Map<String, Object> responseBody = response.getBody();
             List<Map<String, Object>> tasks = (List<Map<String, Object>>) responseBody.get("task-summary");
 
+            // Create/update task tracking records
+            if (tasks != null) {
+                for (Map<String, Object> taskData : tasks) {
+                    trackTaskIfNotExists(taskData,group);
+                }
+            }
+
             LOGGER.info("Retrieved {} tasks for potential owners", tasks != null ? tasks.size() : 0);
+            LOGGER.info("Tasks for potential owners: {}", tasks);
             return tasks;
 
         } catch (Exception e) {
@@ -210,7 +269,7 @@ public class IncidentProcessService {
         }
     }
 
-    // ====================== TASK INSTANCE OPERATIONS ======================
+    // ====================== TASK INSTANCE OPERATIONS WITH PERSISTENCE ======================
 
     /**
      * Get task instance details
@@ -236,7 +295,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Claim a task
+     * Claim a task with database tracking
      * PUT /server/containers/{containerId}/tasks/{taskInstanceId}/states/claimed
      */
     public void claimTask(Long taskInstanceId, String user) {
@@ -245,6 +304,9 @@ public class IncidentProcessService {
 
             HttpEntity<?> requestEntity = new HttpEntity<>(createHeaders());
             restTemplate.exchange(url, HttpMethod.PUT, requestEntity, Void.class);
+
+            // Update database tracking
+            updateTaskStatus(taskInstanceId, TaskStatus.RESERVED, user);
 
             LOGGER.info("Claimed task {} by user: {}", taskInstanceId, user);
 
@@ -255,7 +317,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Start a task
+     * Start a task with database tracking
      * PUT /server/containers/{containerId}/tasks/{taskInstanceId}/states/started
      */
     public void startTask(Long taskInstanceId, String user) {
@@ -264,6 +326,9 @@ public class IncidentProcessService {
 
             HttpEntity<?> requestEntity = new HttpEntity<>(createHeaders());
             restTemplate.exchange(url, HttpMethod.PUT, requestEntity, Void.class);
+
+            // Update database tracking
+            updateTaskStatus(taskInstanceId, TaskStatus.IN_PROGRESS, user);
 
             LOGGER.info("Started task {} by user: {}", taskInstanceId, user);
 
@@ -274,7 +339,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Complete a task with output data
+     * Complete a task with output data and database tracking
      * PUT /server/containers/{containerId}/tasks/{taskInstanceId}/states/completed
      */
     public void completeTask(Long taskInstanceId, String user, Map<String, Object> outputData) {
@@ -283,6 +348,10 @@ public class IncidentProcessService {
 
             HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(outputData, createHeaders());
             restTemplate.exchange(url, HttpMethod.PUT, requestEntity, Void.class);
+
+            // Update database tracking
+            updateTaskTracking(taskInstanceId, TaskStatus.COMPLETED, outputData, user);
+            updateIncidentFromTask(taskInstanceId, outputData);
 
             LOGGER.info("Completed task {} by user: {} with output data", taskInstanceId, user);
 
@@ -293,7 +362,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Release a task (unclaim)
+     * Release a task (unclaim) with database tracking
      * PUT /server/containers/{containerId}/tasks/{taskInstanceId}/states/released
      */
     public void releaseTask(Long taskInstanceId, String user) {
@@ -302,6 +371,9 @@ public class IncidentProcessService {
 
             HttpEntity<?> requestEntity = new HttpEntity<>(createHeaders());
             restTemplate.exchange(url, HttpMethod.PUT, requestEntity, Void.class);
+
+            // Update database tracking
+            updateTaskStatus(taskInstanceId, TaskStatus.READY, null);
 
             LOGGER.info("Released task {} by user: {}", taskInstanceId, user);
 
@@ -357,23 +429,10 @@ public class IncidentProcessService {
         }
     }
 
-
-
-
-
-
-
-
-
-
-
-
-    // ====================== WORKFLOW-SPECIFIC TASK COMPLETION METHODS ======================
+    // ====================== WORKFLOW-SPECIFIC TASK COMPLETION METHODS WITH PERSISTENCE ======================
 
     /**
-     * Complete "Process Incident" task (Helpdesk)
-     * Input: incidentNumber, atmId, errorType, incidentDescription
-     * Output: taskInitialDiagnosis
+     * Complete "Process Incident" task (Helpdesk) with database tracking
      */
     public void completeProcessIncidentTask(Long taskInstanceId, String user, String initialDiagnosis) {
         try {
@@ -391,9 +450,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Complete "Analyze Incident" task (ATM Monitoring)
-     * Input: incidentNumber, atmId, errorType, incidentDescription, taskInitialDiagnosis
-     * Output: taskIncidentType (CRITICAL - this determines the gateway routing)
+     * Complete "Analyze Incident" task (ATM Monitoring) with database tracking
      */
     public void completeAnalyzeIncidentTask(Long taskInstanceId, String user, String incidentType) {
         try {
@@ -417,9 +474,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Complete "Assess Incident" task (Supplier - for non-maintenance incidents)
-     * Input: incidentNumber, atmId, errorType, incidentDescription, taskInitialDiagnosis, taskIncidentType
-     * Output: taskAssessmentDetails, taskSupplierTicketNumber
+     * Complete "Assess Incident" task (Supplier) with database tracking
      */
     public void completeAssessIncidentTask(Long taskInstanceId, String user, String assessmentDetails, String supplierTicketNumber) {
         try {
@@ -438,9 +493,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Complete "Approve Insurance" task (Insurance team)
-     * Input: incidentNumber, atmId, errorType, incidentDescription, taskInitialDiagnosis, taskIncidentType, taskAssessmentDetails, taskSupplierTicketNumber
-     * Output: taskReimbursementDetails
+     * Complete "Approve Insurance" task (Insurance team) with database tracking
      */
     public void completeApproveInsuranceTask(Long taskInstanceId, String user, String reimbursementDetails) {
         try {
@@ -458,9 +511,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Complete "Procure Items" task (Purchasing team)
-     * Input: All previous variables plus taskReimbursementDetails (if from insurance path)
-     * Output: taskProcurementDetails
+     * Complete "Procure Items" task (Purchasing team) with database tracking
      */
     public void completeProcureItemsTask(Long taskInstanceId, String user, String procurementDetails) {
         try {
@@ -478,9 +529,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Complete "Resolve Incident Under Maintenance" task (Supplier - maintenance path)
-     * Input: incidentNumber, atmId, errorType, incidentDescription, taskInitialDiagnosis, taskIncidentType
-     * Output: taskResolutionDetails, taskSupplierTicketNumber
+     * Complete "Resolve Incident Under Maintenance" task (Supplier) with database tracking
      */
     public void completeResolveIncidentUnderMaintenanceTask(Long taskInstanceId, String user, String resolutionDetails, String supplierTicketNumber) {
         try {
@@ -499,9 +548,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Complete "Resolve Incident" task (Supplier - non-maintenance path after procurement)
-     * Input: All previous variables including taskProcurementDetails
-     * Output: taskResolutionDetails, taskSupplierTicketNumber (updated)
+     * Complete "Resolve Incident" task (Supplier) with database tracking
      */
     public void completeResolveIncidentTask(Long taskInstanceId, String user, String resolutionDetails, String supplierTicketNumber) {
         try {
@@ -520,9 +567,7 @@ public class IncidentProcessService {
     }
 
     /**
-     * Complete "Close Incident" task (ATM Monitoring)
-     * Input: All previous variables including taskResolutionDetails
-     * Output: taskClosureDetails
+     * Complete "Close Incident" task (ATM Monitoring) with database tracking
      */
     public void completeCloseIncidentTask(Long taskInstanceId, String user, String closureDetails) {
         try {
@@ -539,21 +584,75 @@ public class IncidentProcessService {
         }
     }
 
-// ====================== HELPER METHODS ======================
+    // ====================== DATABASE TRACKING AND REPORTING METHODS ======================
 
     /**
-     * Validates incident type values
+     * Get comprehensive incident report
      */
-    private boolean isValidIncidentType(String incidentType) {
-        return incidentType != null && (
-                "under_maintenance".equals(incidentType) ||
-                        "outside_maintenance_under_insurance".equals(incidentType) ||
-                        "outside_maintenance_outside_insurance".equals(incidentType)
-        );
+    @Transactional
+    public IncidentReport getIncidentReport(Long processInstanceId) {
+        Incident incident = incidentRepository.findByProcessInstanceId(processInstanceId)
+                .orElseThrow(() -> new RuntimeException("Incident not found for process: " + processInstanceId));
+
+        // Get live data from jBPM
+        Map<String, Object> processVars = getProcessInstance(processInstanceId);
+
+        // Calculate statistics
+        IncidentStatistics stats = calculateStatistics(incident);
+
+        return IncidentReport.builder()
+                .incident(convertToDto(incident))
+                .currentProcessVariables(processVars)
+                .tasks(incident.getTasks().stream().map(this::convertToTaskDto).collect(Collectors.toList()))
+                .statistics(stats)
+                .build();
     }
 
     /**
-     * Enhanced method to claim, start and complete a task
+     * Get all incidents with filtering
+     */
+    @Transactional
+    public Page<IncidentDto> getAllIncidents(Pageable pageable) {
+        return incidentRepository.findAll(pageable)
+                .map(this::convertToDto);
+    }
+
+    /**
+     * Get incidents by status
+     */
+    @Transactional
+    public List<IncidentDto> getIncidentsByStatus(IncidentStatus status) {
+        return incidentRepository.findByStatus(status).stream()
+                .map(this::convertToDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get user's tasks from database
+     */
+    @Transactional
+    public List<IncidentTaskDto> getUserTasks(String user) {
+        List<TaskStatus> activeStatuses = List.of(TaskStatus.READY, TaskStatus.RESERVED, TaskStatus.IN_PROGRESS);
+        return taskRepository.findByAssignedUserAndStatusIn(user, activeStatuses).stream()
+                .map(this::convertToTaskDto)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get group's tasks from database
+     */
+    @Transactional
+    public List<IncidentTaskDto> getGroupTasks(String group) {
+        List<TaskStatus> activeStatuses = List.of(TaskStatus.READY, TaskStatus.RESERVED, TaskStatus.IN_PROGRESS);
+        return taskRepository.findByAssignedGroupAndStatusIn(group, activeStatuses).stream()
+                .map(this::convertToTaskDto)
+                .collect(Collectors.toList());
+    }
+
+    // ====================== HELPER METHODS ======================
+
+    /**
+     * Enhanced method to claim, start and complete a task with database tracking
      */
     public void claimStartAndCompleteTask(Long taskInstanceId, String user, Map<String, Object> outputData) {
         try {
@@ -569,22 +668,15 @@ public class IncidentProcessService {
         }
     }
 
-    // ====================== CONSTANTS FOR INCIDENT TYPES ======================
-    public static final String INCIDENT_TYPE_UNDER_MAINTENANCE = "under_maintenance";
-    public static final String INCIDENT_TYPE_OUTSIDE_MAINTENANCE_UNDER_INSURANCE = "outside_maintenance_under_insurance";
-    public static final String INCIDENT_TYPE_OUTSIDE_MAINTENANCE_OUTSIDE_INSURANCE = "outside_maintenance_outside_insurance";
-
-    // ====================== HELPER METHODS ======================
-
-    private HttpHeaders createHeaders() {
-        String credentials = USERNAME + ":" + PASSWORD;
-        String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.add("Authorization", "Basic " + encodedCredentials);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
-        return headers;
+    /**
+     * Validates incident type values
+     */
+    private boolean isValidIncidentType(String incidentType) {
+        return incidentType != null && (
+                "under_maintenance".equals(incidentType) ||
+                        "outside_maintenance_under_insurance".equals(incidentType) ||
+                        "outside_maintenance_outside_insurance".equals(incidentType)
+        );
     }
 
     // Helper method to safely convert Integer/Long
@@ -600,6 +692,337 @@ public class IncidentProcessService {
         }
     }
 
+    private HttpHeaders createHeaders() {
+        String credentials = USERNAME + ":" + PASSWORD;
+        String encodedCredentials = Base64.getEncoder().encodeToString(credentials.getBytes());
 
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Authorization", "Basic " + encodedCredentials);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        return headers;
+    }
 
+    // ====================== PRIVATE DATABASE TRACKING METHODS ======================
+
+    private void trackTaskIfNotExists(Map<String, Object> taskData, String group) {
+        Long taskInstanceId = convertToLong(taskData.get("task-id"));
+        Long processInstanceId = convertToLong(taskData.get("task-proc-inst-id"));
+
+        if (!taskRepository.findByTaskInstanceId(taskInstanceId).isPresent()) {
+            Incident incident = incidentRepository.findByProcessInstanceId(processInstanceId)
+                    .orElse(null);
+
+            if (incident != null) {
+                IncidentTask task = IncidentTask.builder()
+                        .taskInstanceId(taskInstanceId)
+                        .taskName((String) taskData.get("task-name"))
+                        .taskDescription((String) taskData.get("task-description"))
+                        .assignedGroup(group != null ? group : "unknown")
+                        .status(mapJbpmStatusToTaskStatus((String) taskData.get("task-status")))
+                        .priority((Integer) taskData.get("task-priority"))
+                        .build();
+                // Get and store clean input data
+                storeTaskInputData(task);
+                incident.addTask(task);
+                taskRepository.save(task);
+
+                updateIncidentStatusBasedOnTask(incident, task.getTaskName());
+
+                LOGGER.debug("Tracked new task: {} for incident: {}", task.getTaskName(), incident.getIncidentNumber());
+            }
+        }
+    }
+    private void storeTaskInputData(IncidentTask task) {
+        try {
+            Map<String, Object> inputData = getTaskInputData(task.getTaskInstanceId());
+
+            if (inputData != null && !inputData.isEmpty()) {
+                // Filter out jBPM metadata and keep only business data
+                Map<String, Object> cleanInputData = inputData.entrySet().stream()
+                        .filter(entry -> isBusinessData(entry.getKey()))
+                        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
+                if (!cleanInputData.isEmpty()) {
+                    task.setInputData(objectMapper.writeValueAsString(cleanInputData));
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error storing input data for task: {}", task.getTaskInstanceId(), e);
+        }
+    }
+    private boolean isBusinessData(String key) {
+        // Filter out jBPM internal fields
+        return !key.equals("TaskName") &&
+                !key.equals("NodeName") &&
+                !key.equals("Skippable") &&
+                !key.equals("GroupId") &&
+                !key.equals("ActorId") &&
+                !key.startsWith("_") &&
+                key.startsWith("task") || // Keep task variables
+                key.startsWith("incident") || // Keep incident variables
+                key.startsWith("atm"); // Keep ATM variables
+    }
+
+    private String extractAssignedGroup(Map<String, Object> taskData) {
+        // Extract group from potential owners
+        Object potentialOwners = taskData.get("task-pot-owners");
+        if (potentialOwners instanceof List) {
+            List<?> owners = (List<?>) potentialOwners;
+            for (Object owner : owners) {
+                if (owner instanceof String) {
+                    String ownerStr = (String) owner;
+                    // Assuming groups don't contain @ symbol (simple heuristic)
+                    if (!ownerStr.contains("@")) {
+                        return ownerStr;
+                    }
+                }
+            }
+        }
+        return "unknown";
+    }
+
+    private TaskStatus mapJbpmStatusToTaskStatus(String jbpmStatus) {
+        if (jbpmStatus == null) return TaskStatus.CREATED;
+
+        return switch (jbpmStatus.toLowerCase()) {
+            case "ready" -> TaskStatus.READY;
+            case "reserved" -> TaskStatus.RESERVED;
+            case "inprogress" -> TaskStatus.IN_PROGRESS;
+            case "completed" -> TaskStatus.COMPLETED;
+            case "suspended" -> TaskStatus.SUSPENDED;
+            case "failed" -> TaskStatus.FAILED;
+            case "error" -> TaskStatus.ERROR;
+            case "exited" -> TaskStatus.EXITED;
+            case "obsolete" -> TaskStatus.OBSOLETE;
+            default -> TaskStatus.CREATED;
+        };
+    }
+
+    private void updateTaskStatus(Long taskInstanceId, TaskStatus status, String user) {
+        taskRepository.findByTaskInstanceId(taskInstanceId)
+                .ifPresent(task -> {
+                    task.setStatus(status);
+                    if (user != null) {
+                        task.setAssignedUser(user);
+                    }
+
+                    LocalDateTime now = LocalDateTime.now();
+                    switch (status) {
+                        case RESERVED:
+                            task.setClaimedAt(now);
+                            break;
+                        case IN_PROGRESS:
+                            task.setStartedAt(now);
+                            break;
+                        case COMPLETED:
+                            task.setCompletedAt(now);
+                            break;
+                    }
+
+                    taskRepository.save(task);
+                });
+    }
+
+    private void updateTaskTracking(Long taskInstanceId, TaskStatus status, Map<String, Object> outputData, String user) {
+        IncidentTask task = taskRepository.findByTaskInstanceId(taskInstanceId)
+                .orElseThrow(() -> new RuntimeException("Task not found: " + taskInstanceId));
+
+        task.setStatus(status);
+        task.setAssignedUser(user);
+
+        if (status == TaskStatus.COMPLETED) {
+            task.setCompletedAt(LocalDateTime.now());
+        }
+
+        if (outputData != null && !outputData.isEmpty()) {
+            try {
+                task.setOutputData(objectMapper.writeValueAsString(outputData));
+            } catch (JsonProcessingException e) {
+                LOGGER.error("Error serializing output data", e);
+            }
+        }
+
+        taskRepository.save(task);
+    }
+
+    private void updateIncidentFromTask(Long taskInstanceId, Map<String, Object> outputData) {
+        IncidentTask task = taskRepository.findByTaskInstanceId(taskInstanceId)
+                .orElseThrow(() -> new RuntimeException("Task not found: " + taskInstanceId));
+
+        // Get the incident ID and fetch it separately to avoid proxy issues
+        Long incidentId = task.getIncident().getId();
+        Incident incident = incidentRepository.findById(incidentId)
+                .orElseThrow(() -> new RuntimeException("Incident not found: " + incidentId));
+
+        // Update incident based on task output
+        outputData.forEach((key, value) -> {
+            switch (key) {
+                case "taskInitialDiagnosis":
+                    incident.setInitialDiagnosis((String) value);
+                    incident.setStatus(IncidentStatus.IN_PROGRESS);
+                    break;
+                case "taskIncidentType":
+                    incident.setIncidentType(mapStringToIncidentType((String) value));
+                    break;
+                case "taskAssessmentDetails":
+                    incident.setAssessmentDetails((String) value);
+                    incident.setStatus(IncidentStatus.WAITING_FOR_INSURANCE);
+                    break;
+                case "taskSupplierTicketNumber":
+                    incident.setSupplierTicketNumber((String) value);
+                    break;
+                case "taskReimbursementDetails":
+                    incident.setReimbursementDetails((String) value);
+                    incident.setStatus(IncidentStatus.WAITING_FOR_PROCUREMENT);
+                    break;
+                case "taskProcurementDetails":
+                    incident.setProcurementDetails((String) value);
+                    incident.setStatus(IncidentStatus.WAITING_FOR_RESOLUTION);
+                    break;
+                case "taskResolutionDetails":
+                    incident.setResolutionDetails((String) value);
+                    incident.setStatus(IncidentStatus.RESOLVED);
+                    incident.setResolvedAt(LocalDateTime.now());
+                    break;
+                case "taskClosureDetails":
+                    incident.setClosureDetails((String) value);
+                    incident.setStatus(IncidentStatus.CLOSED);
+                    incident.setClosedAt(LocalDateTime.now());
+                    break;
+            }
+        });
+
+        incidentRepository.save(incident);
+    }
+
+    private void updateIncidentStatusBasedOnTask(Incident incident, String taskName) {
+        // Ensure we have a fresh copy from the database
+        Incident freshIncident = incidentRepository.findById(incident.getId())
+                .orElse(incident);
+
+        switch (taskName) {
+            case "Process Incident":
+                freshIncident.setStatus(IncidentStatus.IN_PROGRESS);
+                break;
+            case "Analyze Incident":
+                freshIncident.setStatus(IncidentStatus.IN_PROGRESS);
+                break;
+            case "Assess Incident":
+                freshIncident.setStatus(IncidentStatus.WAITING_FOR_ASSESSMENT);
+                break;
+            case "Approve Insurance":
+                freshIncident.setStatus(IncidentStatus.WAITING_FOR_INSURANCE);
+                break;
+            case "Procure Items":
+                freshIncident.setStatus(IncidentStatus.WAITING_FOR_PROCUREMENT);
+                break;
+            case "Resolve Incident":
+            case "Resolve Incident Under Maintenance":
+                freshIncident.setStatus(IncidentStatus.WAITING_FOR_RESOLUTION);
+                break;
+            case "Close Incident":
+                freshIncident.setStatus(IncidentStatus.RESOLVED);
+                break;
+        }
+        incidentRepository.save(freshIncident);
+    }
+
+    private IncidentType mapStringToIncidentType(String type) {
+        if (type == null) return IncidentType.NOT_CLASSIFIED;
+
+        return switch (type) {
+            case "under_maintenance" -> IncidentType.UNDER_MAINTENANCE;
+            case "outside_maintenance_under_insurance" -> IncidentType.OUTSIDE_MAINTENANCE_UNDER_INSURANCE;
+            case "outside_maintenance_outside_insurance" -> IncidentType.OUTSIDE_MAINTENANCE_OUTSIDE_INSURANCE;
+            default -> IncidentType.NOT_CLASSIFIED;
+        };
+    }
+
+    private IncidentStatistics calculateStatistics(Incident incident) {
+        List<IncidentTask> tasks = incident.getTasks();
+        long totalTasks = tasks.size();
+        long completedTasks = tasks.stream()
+                .mapToLong(task -> task.getStatus() == TaskStatus.COMPLETED ? 1 : 0)
+                .sum();
+        long pendingTasks = totalTasks - completedTasks;
+
+        long totalDurationMinutes = 0;
+        if (incident.getCreatedAt() != null) {
+            LocalDateTime endTime = incident.getClosedAt() != null ?
+                    incident.getClosedAt() : LocalDateTime.now();
+            totalDurationMinutes = ChronoUnit.MINUTES.between(incident.getCreatedAt(), endTime);
+        }
+
+        double completionPercentage = totalTasks > 0 ?
+                (double) completedTasks / totalTasks * 100 : 0;
+
+        String currentStep = tasks.stream()
+                .filter(task -> task.getStatus() != TaskStatus.COMPLETED)
+                .findFirst()
+                .map(IncidentTask::getTaskName)
+                .orElse("Completed");
+
+        return IncidentStatistics.builder()
+                .totalTasks(totalTasks)
+                .completedTasks(completedTasks)
+                .pendingTasks(pendingTasks)
+                .totalDurationMinutes(totalDurationMinutes)
+                .currentStep(currentStep)
+                .completionPercentage(completionPercentage)
+                .build();
+    }
+
+    private String generateIncidentNumber() {
+        return "INC-" + System.currentTimeMillis() + "-" +
+                UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+    private IncidentDto convertToDto(Incident incident) {
+        return IncidentDto.builder()
+                .id(incident.getId())
+                .incidentNumber(incident.getIncidentNumber())
+                .processInstanceId(incident.getProcessInstanceId())
+                .atmId(incident.getAtmId())
+                .errorType(incident.getErrorType())
+                .incidentDescription(incident.getIncidentDescription())
+                .status(incident.getStatus())
+                .incidentType(incident.getIncidentType())
+                .initialDiagnosis(incident.getInitialDiagnosis())
+                .assessmentDetails(incident.getAssessmentDetails())
+                .supplierTicketNumber(incident.getSupplierTicketNumber())
+                .reimbursementDetails(incident.getReimbursementDetails())
+                .procurementDetails(incident.getProcurementDetails())
+                .resolutionDetails(incident.getResolutionDetails())
+                .closureDetails(incident.getClosureDetails())
+                .createdBy(incident.getCreatedBy())
+                .assignedTo(incident.getAssignedTo())
+                .createdAt(incident.getCreatedAt())
+                .updatedAt(incident.getUpdatedAt())
+                .resolvedAt(incident.getResolvedAt())
+                .closedAt(incident.getClosedAt())
+                .build();
+    }
+
+    private IncidentTaskDto convertToTaskDto(IncidentTask task) {
+        return IncidentTaskDto.builder()
+                .id(task.getId())
+                .taskInstanceId(task.getTaskInstanceId())
+                .taskName(task.getTaskName())
+                .taskDescription(task.getTaskDescription())
+                .assignedGroup(task.getAssignedGroup())
+                .assignedUser(task.getAssignedUser())
+                .status(task.getStatus())
+                .priority(task.getPriority())
+                .createdAt(task.getCreatedAt())
+                .updatedAt(task.getUpdatedAt())
+                .claimedAt(task.getClaimedAt())
+                .startedAt(task.getStartedAt())
+                .completedAt(task.getCompletedAt())
+                .dueDate(task.getDueDate())
+                .inputData(task.getInputData())
+                .outputData(task.getOutputData())
+                .comments(task.getComments())
+                .build();
+    }
 }

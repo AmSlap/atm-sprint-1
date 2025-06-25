@@ -67,31 +67,42 @@ public class ConfigurationHandlerService {
             configuration.setOverallHealth("UNKNOWN"); // Or some default value.
         }
 
-        configuration.setLastUpdateTimestamp(event.getTimestamp()!= null ?
+        configuration.setLastUpdateTimestamp(event.getTimestamp() != null ?
                 event.getTimestamp().atOffset(ZoneOffset.UTC) : OffsetDateTime.now(ZoneOffset.UTC));
 
         atmConfigurationRepository.save(configuration);
         log.info("Successfully processed and updated configuration change for ATM: {}", event.getAtmId());
     }
 
-    // Calculate overall health from the peripheral details map.
     private String calculateOverallHealth(Map<String, Object> peripheralDetails) {
-        boolean hasCritical = false;
+        boolean hasCriticalFailure = false;
         boolean hasWarning = false;
 
         if (peripheralDetails != null) {
             for (Map.Entry<String, Object> entry : peripheralDetails.entrySet()) {
+                String componentKey = entry.getKey().toLowerCase();
                 Object value = entry.getValue();
+
                 if (value instanceof Map) {
                     Map<?, ?> peripheral = (Map<?, ?>) value;
                     Object statusObj = peripheral.get("status");
+
                     if (statusObj != null) {
                         String status = statusObj.toString().toUpperCase();
-                        if (status.contains("CRITICAL") || status.contains("DOWN") || status.contains("ERROR")) {
-                            hasCritical = true;
-                            break; // Critical takes precedence.
-                        }
-                        if (status.contains("WARNING") || status.contains("LOW")) {
+
+                        // Check if status indicates failure
+                        boolean isCriticalStatus = status.matches(".*(CRITICAL|DOWN|ERROR|FAILED|FAULT|JAMMED|OFFLINE).*");
+                        boolean isWarningStatus = status.matches(".*(WARNING|LOW|DEGRADED|PARTIAL).*");
+
+                        if (isCriticalStatus) {
+                            // Only critical components cause RED status
+                            if (isCriticalComponent(componentKey)) {
+                                hasCriticalFailure = true;
+                                break;
+                            } else {
+                                hasWarning = true; // Non-critical component = warning only
+                            }
+                        } else if (isWarningStatus) {
                             hasWarning = true;
                         }
                     }
@@ -99,12 +110,18 @@ public class ConfigurationHandlerService {
             }
         }
 
-        if (hasCritical) {
-            return "RED";
-        }
-        if (hasWarning) {
-            return "ORANGE";
-        }
-        return "GREEN";
+        return hasCriticalFailure ? "RED" : (hasWarning ? "ORANGE" : "GREEN");
+    }
+
+    /**
+     * Check if a component is considered critical for ATM operations
+     */
+    private boolean isCriticalComponent(String componentKey) {
+        return componentKey.contains("cash") ||           // cashDispenser, billValidator
+                componentKey.contains("card") ||           // cardReader
+                componentKey.contains("pin") ||            // pinPad
+                componentKey.contains("dispenser") ||      // cashDispenser
+                componentKey.contains("validator") ||      // billValidator
+                componentKey.contains("sensor");           // security sensors
     }
 }

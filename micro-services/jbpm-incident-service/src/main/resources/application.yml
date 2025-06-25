@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: jbpm-incident-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/atm_state_db
+    username: postgres
+    password: foo
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    # Schema Generation (Choose ONE strategy)
+    hibernate:
+      # Option 1: Automatic (Good for quick development/testing, NOT recommended for production)
+      ddl-auto: update
+      # Option 2: Using Migration Tools (Recommended for Dev/Prod) - Set to 'validate' or 'none'
+      # ddl-auto: validate
+    # Show SQL statements in logs (Optional, useful for debugging)
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+kie:
+    server:
+        url: http://localhost:8080/kie-server/services/rest/server
+        username: wbadmin
+        password: wbadmin
+        timeout: 30000
+    container:
+      id: Incident-Management_1.0.0-SNAPSHOT
+    process:
+      id: IncidentManagement.IncidentManagementProcess
+server:
+  port: 8081

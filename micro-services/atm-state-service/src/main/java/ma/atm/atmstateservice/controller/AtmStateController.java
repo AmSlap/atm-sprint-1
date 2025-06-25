@@ -39,7 +39,7 @@ public class AtmStateController {
     public AtmStateController(AtmStatusRepository statusRepository,
                               AtmConfigurationRepository configRepository,
                               AtmCounterRepository counterRepository,
-                              RegistryServiceClient registryClient) { // Add to constructor
+                              RegistryServiceClient registryClient) {
         this.statusRepository = statusRepository;
         this.configRepository = configRepository;
         this.counterRepository = counterRepository;

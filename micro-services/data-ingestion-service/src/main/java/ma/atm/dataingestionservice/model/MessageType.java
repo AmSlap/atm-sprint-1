@@ -8,6 +8,7 @@ public enum MessageType {
     CONFIGURATION,
     COUNTER,
     TRANSACTION,
+    INCIDENT,
     UNKNOWN;
     
     /**

@@ -24,18 +24,20 @@ public class MessageDispatcherServiceImpl implements MessageDispatcherService {
     private final ConfigurationMessageService configurationMessageService;
     private final CounterMessageService counterMessageService;
     private final TransactionMessageService transactionMessageService;
+    private final IncidentMessageService incidentMessageService;
 
     @Autowired
     public MessageDispatcherServiceImpl(ObjectMapper objectMapper,
                                         StatusMessageService statusMessageService,
                                         ConfigurationMessageService configurationMessageService,
                                         CounterMessageService counterMessageService,
-                                        TransactionMessageService transactionMessageService) {
+                                        TransactionMessageService transactionMessageService, IncidentMessageService incidentMessageService) {
         this.objectMapper = objectMapper;
         this.statusMessageService = statusMessageService;
         this.configurationMessageService = configurationMessageService;
         this.counterMessageService = counterMessageService;
         this.transactionMessageService = transactionMessageService;
+        this.incidentMessageService = incidentMessageService;
     }
 
     @Override
@@ -71,7 +73,7 @@ public class MessageDispatcherServiceImpl implements MessageDispatcherService {
                     IncidentMessage incidentMessage = objectMapper.readValue(messagePayload, IncidentMessage.class);
                     // Handle incident message processing here
                     log.info("Processing incident message for ATM ID: {}", incidentMessage.getAtmId());
-                    // You can add a service to handle incidents if needed
+                    incidentMessageService.process(incidentMessage);
                     break;
                 case UNKNOWN:
                 default:

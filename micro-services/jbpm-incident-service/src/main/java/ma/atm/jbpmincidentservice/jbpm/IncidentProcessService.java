@@ -34,7 +34,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-
 public class IncidentProcessService {
     private static final Logger LOGGER = LoggerFactory.getLogger(IncidentProcessService.class);
 

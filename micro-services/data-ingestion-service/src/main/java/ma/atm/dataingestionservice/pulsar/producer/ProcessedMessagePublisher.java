@@ -21,6 +21,8 @@ public class ProcessedMessagePublisher {
     private PulsarTemplate<CounterMessage> counterTemplate;
     @Autowired
     private PulsarTemplate<TransactionMessage> transactionTemplate; // Only need String template
+    @Autowired
+    private PulsarTemplate<IncidentMessage> incidentTemplate; // Assuming you have a PulsarTemplate for IncidentMessage
 
     @Autowired
     private ObjectMapper objectMapper; // Add ObjectMapper for JSON conversion
@@ -91,10 +93,11 @@ public class ProcessedMessagePublisher {
     }
 
     public void publishIncidentEvent(IncidentMessage message) {
+        log.info("dkhlt ");
         try {
-            String jsonMessage = objectMapper.writeValueAsString(message);
-            log.info("Publishing incident message to topic {}: {}", incident_topic, jsonMessage);
+            log.info("Publishing incident message to topic {}: {}", incident_topic, message);
             // Assuming you have a PulsarTemplate for IncidentMessage
+            incidentTemplate.send(incident_topic, message);
             // incidentTemplate.send(incident_topic, message);
             log.info("Published incident event to topic {}: {}", incident_topic, message);
         } catch (Exception e) {

@@ -6,12 +6,14 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.web.config.EnableSpringDataWebSupport;
+import org.springframework.pulsar.annotation.EnablePulsar;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @SpringBootApplication
+@EnablePulsar
 @EnableSpringDataWebSupport(pageSerializationMode = EnableSpringDataWebSupport.PageSerializationMode.VIA_DTO)
 
 public class JbpmIncidentServiceApplication {

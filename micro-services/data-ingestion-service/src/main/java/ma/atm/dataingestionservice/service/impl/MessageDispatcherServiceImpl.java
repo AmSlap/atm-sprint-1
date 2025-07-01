@@ -66,6 +66,13 @@ public class MessageDispatcherServiceImpl implements MessageDispatcherService {
                     TransactionMessage transactionMessage = objectMapper.readValue(messagePayload, TransactionMessage.class);
                     transactionMessageService.process(transactionMessage);
                     break;
+
+                case INCIDENT:
+                    IncidentMessage incidentMessage = objectMapper.readValue(messagePayload, IncidentMessage.class);
+                    // Handle incident message processing here
+                    log.info("Processing incident message for ATM ID: {}", incidentMessage.getAtmId());
+                    // You can add a service to handle incidents if needed
+                    break;
                 case UNKNOWN:
                 default:
                     log.warn("Received message with unknown or missing type for ATM ID: {}. Payload: {}", atmId, messagePayload);

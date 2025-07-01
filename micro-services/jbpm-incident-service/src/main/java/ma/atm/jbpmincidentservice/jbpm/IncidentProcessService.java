@@ -26,7 +26,9 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -99,6 +101,7 @@ public class IncidentProcessService {
                     .incidentDescription(incidentDescription)
                     .status(IncidentStatus.CREATED)
                     .createdBy(createdBy)
+                    .createdAt(LocalDateTime.now(ZoneOffset.UTC))
                     .build();
 
             incident = incidentRepository.save(incident);
@@ -188,7 +191,6 @@ public class IncidentProcessService {
             }
 
             String url = urlBuilder.toString();
-            LOGGER.debug("Task query URL: {}", url);
 
             HttpEntity<?> requestEntity = new HttpEntity<>(createHeaders());
             ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
@@ -285,7 +287,7 @@ public class IncidentProcessService {
                     new ParameterizedTypeReference<Map<String, Object>>() {}
             );
 
-            LOGGER.info("Retrieved task instance: {}", taskInstanceId);
+            LOGGER.info("Retrieved task instance: {}", response.getBody());
             return response.getBody();
 
         } catch (Exception e) {
@@ -429,6 +431,21 @@ public class IncidentProcessService {
         }
     }
 
+    public String getProcessDiagram(Long processInstanceId) {
+        String url = KIE_SERVER_URL + "/containers/" + CONTAINER_ID +
+                "/images/processes/instances/" + processInstanceId;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBasicAuth("wbadmin", "wbadmin");
+
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, entity, String.class);
+
+        return response.getBody();
+    }
+
     // ====================== WORKFLOW-SPECIFIC TASK COMPLETION METHODS WITH PERSISTENCE ======================
 
     /**
@@ -440,7 +457,7 @@ public class IncidentProcessService {
                     "taskInitialDiagnosis", initialDiagnosis
             );
 
-            claimStartAndCompleteTask(taskInstanceId, user, outputData);
+            smartClaimStartAndCompleteTask(taskInstanceId, user, outputData);
             LOGGER.info("Completed Process Incident task {} with diagnosis: {}", taskInstanceId, initialDiagnosis);
 
         } catch (Exception e) {
@@ -464,7 +481,7 @@ public class IncidentProcessService {
                     "taskIncidentType", incidentType
             );
 
-            claimStartAndCompleteTask(taskInstanceId, user, outputData);
+            smartClaimStartAndCompleteTask(taskInstanceId, user, outputData);
             LOGGER.info("Completed Analyze Incident task {} with incident type: {}", taskInstanceId, incidentType);
 
         } catch (Exception e) {
@@ -483,7 +500,7 @@ public class IncidentProcessService {
                     "taskSupplierTicketNumber", supplierTicketNumber
             );
 
-            claimStartAndCompleteTask(taskInstanceId, user, outputData);
+            smartClaimStartAndCompleteTask(taskInstanceId, user, outputData);
             LOGGER.info("Completed Assess Incident task {} with supplier ticket: {}", taskInstanceId, supplierTicketNumber);
 
         } catch (Exception e) {
@@ -501,7 +518,7 @@ public class IncidentProcessService {
                     "taskReimbursementDetails", reimbursementDetails
             );
 
-            claimStartAndCompleteTask(taskInstanceId, user, outputData);
+            smartClaimStartAndCompleteTask(taskInstanceId, user, outputData);
             LOGGER.info("Completed Approve Insurance task {} with reimbursement: {}", taskInstanceId, reimbursementDetails);
 
         } catch (Exception e) {
@@ -519,7 +536,7 @@ public class IncidentProcessService {
                     "taskProcurementDetails", procurementDetails
             );
 
-            claimStartAndCompleteTask(taskInstanceId, user, outputData);
+            smartClaimStartAndCompleteTask(taskInstanceId, user, outputData);
             LOGGER.info("Completed Procure Items task {} with procurement: {}", taskInstanceId, procurementDetails);
 
         } catch (Exception e) {
@@ -538,7 +555,7 @@ public class IncidentProcessService {
                     "taskSupplierTicketNumber", supplierTicketNumber
             );
 
-            claimStartAndCompleteTask(taskInstanceId, user, outputData);
+            smartClaimStartAndCompleteTask(taskInstanceId, user, outputData);
             LOGGER.info("Completed Resolve Incident Under Maintenance task {} with supplier ticket: {}", taskInstanceId, supplierTicketNumber);
 
         } catch (Exception e) {
@@ -557,7 +574,7 @@ public class IncidentProcessService {
                     "taskSupplierTicketNumber", supplierTicketNumber
             );
 
-            claimStartAndCompleteTask(taskInstanceId, user, outputData);
+            smartClaimStartAndCompleteTask(taskInstanceId, user, outputData);
             LOGGER.info("Completed Resolve Incident task {} with supplier ticket: {}", taskInstanceId, supplierTicketNumber);
 
         } catch (Exception e) {
@@ -575,7 +592,7 @@ public class IncidentProcessService {
                     "taskClosureDetails", closureDetails
             );
 
-            claimStartAndCompleteTask(taskInstanceId, user, outputData);
+            smartClaimStartAndCompleteTask(taskInstanceId, user, outputData);
             LOGGER.info("Completed Close Incident task {} with closure: {}", taskInstanceId, closureDetails);
 
         } catch (Exception e) {
@@ -636,6 +653,12 @@ public class IncidentProcessService {
         return taskRepository.findByAssignedUserAndStatusIn(user, activeStatuses).stream()
                 .map(this::convertToTaskDto)
                 .collect(Collectors.toList());
+    }@Transactional
+    public List<IncidentTaskDto> getUserTasksByStatus(String user,TaskStatus status) {
+        List<TaskStatus> taskStatus = List.of(status);
+        return taskRepository.findByAssignedUserAndStatusIn(user, taskStatus).stream()
+                .map(this::convertToTaskDto)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -654,13 +677,26 @@ public class IncidentProcessService {
     /**
      * Enhanced method to claim, start and complete a task with database tracking
      */
-    public void claimStartAndCompleteTask(Long taskInstanceId, String user, Map<String, Object> outputData) {
+    public void smartClaimStartAndCompleteTask(Long taskInstanceId, String user, Map<String, Object> outputData) {
         try {
-            claimTask(taskInstanceId, user);
-            startTask(taskInstanceId, user);
-            completeTask(taskInstanceId, user, outputData);
+            // Get current task state first
+            Map<String, Object> taskInfo = getTaskInstance(taskInstanceId);
+            String currentStatus = (String) taskInfo.get("task-status");
+            String currentOwner = (String) taskInfo.get("task-actual-owner");
 
-            LOGGER.info("Claimed, started and completed task {} by user: {}", taskInstanceId, user);
+            // Only claim if not already claimed by this user
+            if ("ready".equalsIgnoreCase(currentStatus)) {
+                claimTask(taskInstanceId, user);
+                startTask(taskInstanceId, user);
+            } else if ("reserved".equalsIgnoreCase(currentStatus) && user.equals(currentOwner)) {
+                startTask(taskInstanceId, user);
+            } else if ("inprogress".equalsIgnoreCase(currentStatus) && user.equals(currentOwner)) {
+                // Already started, just complete
+            } else {
+                throw new RuntimeException("Cannot complete task - invalid state or wrong user");
+            }
+
+            completeTask(taskInstanceId, user, outputData);
 
         } catch (Exception e) {
             LOGGER.error("Error in claim-start-complete flow for task {} by user: {}", taskInstanceId, user, e);
@@ -721,6 +757,7 @@ public class IncidentProcessService {
                         .assignedGroup(group != null ? group : "unknown")
                         .status(mapJbpmStatusToTaskStatus((String) taskData.get("task-status")))
                         .priority((Integer) taskData.get("task-priority"))
+                        .createdAt(LocalDateTime.now(ZoneOffset.UTC))
                         .build();
                 // Get and store clean input data
                 storeTaskInputData(task);
@@ -1025,4 +1062,86 @@ public class IncidentProcessService {
                 .comments(task.getComments())
                 .build();
     }
+
+
+    /**
+     * Convert jBPM task data to IncidentTaskDto
+     */
+    public IncidentTaskDto convertJbpmTaskToDto(Map<String, Object> jbpmTask) {
+        try {
+            Long taskInstanceId = convertToLong(jbpmTask.get("task-id"));
+            Long processInstanceId = convertToLong(jbpmTask.get("task-proc-inst-id"));
+
+            // Parse jBPM date format
+            LocalDateTime createdAt = parseJbpmDate(jbpmTask.get("task-created-on"));
+            LocalDateTime activationTime = parseJbpmDate(jbpmTask.get("task-activation-time"));
+            LocalDateTime expirationTime = parseJbpmDate(jbpmTask.get("task-expiration-time"));
+
+            return IncidentTaskDto.builder()
+                    .taskInstanceId(taskInstanceId)
+                    .taskName((String) jbpmTask.get("task-name"))
+                    .taskDescription((String) jbpmTask.get("task-description"))
+                    .assignedUser((String) jbpmTask.get("task-actual-owner"))
+                    .assignedGroup(extractPotentialGroup(jbpmTask))
+                    .status(mapJbpmStatusToTaskStatus((String) jbpmTask.get("task-status")))
+                    .priority((Integer) jbpmTask.get("task-priority"))
+                    .createdAt(createdAt)
+                    .dueDate(expirationTime)
+                    .comments((String) jbpmTask.get("task-subject"))
+                    .build();
+
+        } catch (Exception e) {
+            LOGGER.error("Error converting jBPM task to DTO: {}", jbpmTask, e);
+            throw new RuntimeException("Failed to convert jBPM task data", e);
+        }
+    }
+
+    /**
+     * Parse jBPM date format {java.util.Date=timestamp}
+     */
+    private LocalDateTime parseJbpmDate(Object dateObj) {
+        if (dateObj == null) return null;
+
+        try {
+            if (dateObj instanceof Map) {
+                Map<String, Object> dateMap = (Map<String, Object>) dateObj;
+                Object timestamp = dateMap.get("java.util.Date");
+                if (timestamp instanceof Number) {
+                    return LocalDateTime.ofInstant(
+                            Instant.ofEpochMilli(((Number) timestamp).longValue()),
+                            ZoneOffset.UTC
+                    );
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.debug("Could not parse jBPM date: {}", dateObj);
+        }
+
+        return null;
+    }
+
+    /**
+     * Extract potential group from jBPM task data
+     */
+    private String extractPotentialGroup(Map<String, Object> taskData) {
+        // Since jBPM doesn't directly expose potential owners in the summary,
+        // we'll derive it from task name or use a default
+        String taskName = (String) taskData.get("task-name");
+
+        if ("Process Incident".equals(taskName)) {
+            return "helpdesk";
+        } else if ("Analyze Incident".equals(taskName) || "Close Incident".equals(taskName)) {
+            return "atm_monitoring";
+        } else if ("Assess Incident".equals(taskName) || "Resolve Incident".equals(taskName) || "Resolve Incident Under Maintenance".equals(taskName)) {
+            return "supplier";
+        } else if ("Approve Insurance".equals(taskName)) {
+            return "insurance";
+        } else if ("Procure Parts/Services".equals(taskName)) {
+            return "purchasing";
+        }
+
+        return "unknown";
+    }
+
+
 }

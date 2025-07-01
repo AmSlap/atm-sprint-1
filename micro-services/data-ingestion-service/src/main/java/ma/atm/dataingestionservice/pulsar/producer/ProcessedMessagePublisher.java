@@ -3,10 +3,7 @@ package ma.atm.dataingestionservice.pulsar.producer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import ma.atm.dataingestionservice.integration.ConfigurationIntegrationEvent;
-import ma.atm.dataingestionservice.model.ConfigurationMessage;
-import ma.atm.dataingestionservice.model.CounterMessage;
-import ma.atm.dataingestionservice.model.StatusMessage;
-import ma.atm.dataingestionservice.model.TransactionMessage;
+import ma.atm.dataingestionservice.model.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.pulsar.core.PulsarTemplate;
@@ -39,6 +36,9 @@ public class ProcessedMessagePublisher {
 
     @Value("${pulsar.producer.transaction-topic}")
     private String transaction_topic;
+
+    @Value("${pulsar.producer.incident-topic}")
+    private String incident_topic;
 
 
     // Method for StatusMessage
@@ -87,6 +87,18 @@ public class ProcessedMessagePublisher {
             log.info("Published transaction event to topic {}: {}", transaction_topic, jsonMessage);
         } catch (Exception e) {
             log.error("Failed to publish transaction event to topic {}: {}", transaction_topic, e.getMessage(), e);
+        }
+    }
+
+    public void publishIncidentEvent(IncidentMessage message) {
+        try {
+            String jsonMessage = objectMapper.writeValueAsString(message);
+            log.info("Publishing incident message to topic {}: {}", incident_topic, jsonMessage);
+            // Assuming you have a PulsarTemplate for IncidentMessage
+            // incidentTemplate.send(incident_topic, message);
+            log.info("Published incident event to topic {}: {}", incident_topic, message);
+        } catch (Exception e) {
+            log.error("Failed to publish incident event to topic {}: {}", incident_topic, e.getMessage(), e);
         }
     }
 }

@@ -10,15 +10,25 @@ spring:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     # Schema Generation (Choose ONE strategy)
     hibernate:
-      # Option 1: Automatic (Good for quick development/testing, NOT recommended for production)
       ddl-auto: update
-      # Option 2: Using Migration Tools (Recommended for Dev/Prod) - Set to 'validate' or 'none'
-      # ddl-auto: validate
-    # Show SQL statements in logs (Optional, useful for debugging)
     show-sql: true
     properties:
       hibernate:
         format_sql: true
+  pulsar:
+    client:
+      service-url: pulsar://localhost:6650
+    producer:
+      send-timeout-ms: 10000
+    consumer:
+      dead-letter-policy-max-redeliver-count: 3
+    admin:
+      service-url: http://localhost:8080
+pulsar:
+  consumer:
+    incident-topic: internal-atm-incident-events
+
+    subscription-name: atm-state-service-subscription
 
 kie:
     server:

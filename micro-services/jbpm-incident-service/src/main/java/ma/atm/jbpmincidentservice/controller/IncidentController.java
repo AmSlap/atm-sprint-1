@@ -9,6 +9,9 @@ import ma.atm.jbpmincidentservice.dto.request.*;
 import ma.atm.jbpmincidentservice.dto.response.ApiResponse;
 import ma.atm.jbpmincidentservice.jbpm.IncidentProcessService;
 import ma.atm.jbpmincidentservice.model.enums.IncidentStatus;
+import ma.atm.jbpmincidentservice.model.enums.TaskStatus;
+import org.springframework.http.MediaType;
+import org.springframework.scheduling.config.Task;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/incidents")
@@ -165,11 +169,17 @@ public class IncidentController {
      * Get tasks for potential owners (by group)
      * GET /api/incidents/tasks/available?group=helpdesk
      */
+
     @GetMapping("/tasks/available")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAvailableTasks(
+    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getAvailableTasks(
             @RequestParam(required = false) String group) {
         try {
-            List<Map<String, Object>> tasks = incidentProcessService.getTasksForPotentialOwners(group);
+            // Change return type from raw Map to IncidentTaskDto
+            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksForPotentialOwners(group);
+
+            List<IncidentTaskDto> tasks = jbpmTasks.stream()
+                    .map(incidentProcessService::convertJbpmTaskToDto)
+                    .collect(Collectors.toList());
 
             return ResponseEntity.ok(ApiResponse.success(tasks, "Available tasks retrieved successfully"));
 
@@ -187,7 +197,12 @@ public class IncidentController {
     @GetMapping("/tasks/my-tasks")
     public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getUserTasks(@RequestParam String user) {
         try {
-            List<IncidentTaskDto> tasks = incidentProcessService.getUserTasks(user);
+            // Change from database to jBPM direct
+            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksOwnedByUser(user, 0, 100);
+
+            List<IncidentTaskDto> tasks = jbpmTasks.stream()
+                    .map(incidentProcessService::convertJbpmTaskToDto)
+                    .collect(Collectors.toList());
 
             return ResponseEntity.ok(ApiResponse.success(tasks, "User tasks retrieved successfully"));
 
@@ -202,10 +217,17 @@ public class IncidentController {
      * Get group's tasks
      * GET /api/incidents/tasks/group-tasks?group=helpdesk
      */
+
     @GetMapping("/tasks/group-tasks")
     public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getGroupTasks(@RequestParam String group) {
         try {
-            List<IncidentTaskDto> tasks = incidentProcessService.getGroupTasks(group);
+            // Change from database to jBPM direct
+            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksForPotentialOwners(group);
+
+            List<IncidentTaskDto> tasks = jbpmTasks.stream()
+                    .map(incidentProcessService::convertJbpmTaskToDto)
+                    .collect(Collectors.toList());
+            log.info("Retrieved {} tasks for group: {}", tasks, group);
 
             return ResponseEntity.ok(ApiResponse.success(tasks, "Group tasks retrieved successfully"));
 
@@ -213,6 +235,24 @@ public class IncidentController {
             log.error("Error retrieving group tasks for: {}", group, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.error("Failed to retrieve group tasks: " + e.getMessage()));
+        }
+    }
+
+
+
+    @GetMapping("/tasks/user-tasks-by-status")
+    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getUserTasksByStatus(
+            @RequestParam String user,
+            @RequestParam TaskStatus status) {
+        try {
+            List<IncidentTaskDto> tasks = incidentProcessService.getUserTasksByStatus(user, status);
+
+            return ResponseEntity.ok(ApiResponse.success(tasks, "User tasks by status retrieved successfully"));
+
+        } catch (Exception e) {
+            log.error("Error retrieving user tasks by status: {}", status, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to retrieve user tasks by status: " + e.getMessage()));
         }
     }
 
@@ -490,4 +530,42 @@ public class IncidentController {
                     .body(ApiResponse.error("Failed to release task: " + e.getMessage()));
         }
     }
+
+    @PostMapping("/tasks/{taskInstanceId}/start")
+    public ResponseEntity<ApiResponse<Void>> startTask(
+            @PathVariable Long taskInstanceId,
+            @Valid @RequestBody StartTaskRequest request) {
+        try {
+            incidentProcessService.startTask(taskInstanceId, request.getUser());
+
+            return ResponseEntity.ok(ApiResponse.success(null, "Task started successfully"));
+
+        } catch (Exception e) {
+            log.error("Error starting task: {}", taskInstanceId, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to start task: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get process diagram as SVG
+     * GET /api/incidents/process/{processInstanceId}/diagram
+     */
+    @GetMapping(value = "/process/{processInstanceId}/diagram", produces = "image/svg+xml")
+    public ResponseEntity<String> getProcessDiagram(@PathVariable Long processInstanceId) {
+        try {
+            String svgDiagram = incidentProcessService.getProcessDiagram(processInstanceId);
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.valueOf("image/svg+xml"))
+                    .body(svgDiagram);
+
+        } catch (Exception e) {
+            log.error("Error retrieving process diagram for: {}", processInstanceId, e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("<svg><text>Diagram not found</text></svg>");
+        }
+    }
+
+
 }

@@ -21,6 +21,7 @@ pulsar:
     configuration-topic: internal-atm-configuration-events
     counter-topic: internal-atm-counter-events
     transaction-topic: internal-atm-transaction-events
+    incident-topic: internal-atm-incident-events
 
 
 server:

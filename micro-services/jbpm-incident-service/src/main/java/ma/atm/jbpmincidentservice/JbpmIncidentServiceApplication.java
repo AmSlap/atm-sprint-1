@@ -20,11 +20,11 @@ public class JbpmIncidentServiceApplication {
 
         SpringApplication.run(JbpmIncidentServiceApplication.class, args);
     }
-    /*
+
     @Bean
     public CommandLineRunner runIncidentProcess(IncidentProcessService service) {
         return args -> {
-            service.startIncidentProcess("ATM101", "chi haja", "This is the first incident");
+           /* service.startIncidentProcess("ATM101", "chi haja", "This is the first incident");
             List<Map<String, Object>> list = service.getTasksForPotentialOwners("helpdesk");
 
             for (Map<String, Object> task : list) {
@@ -137,10 +137,10 @@ public class JbpmIncidentServiceApplication {
             service.completeCloseIncidentTask(taskId, "atm_monitoring", "salat" );
             System.out.println("Task output: " + service.getTaskOutputData(taskId));
 
-        }
+        }*/
         };
 
 
-    }*/
+    }
 
 }

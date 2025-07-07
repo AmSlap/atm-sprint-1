@@ -16,16 +16,46 @@ spring:
           uri: lb://ATM-STATE-SERVICE
           predicates:
             - Path=/api/state/atms/**
+      server:
+        webflux:
+          default-filters:
+            - AddRequestHeader=X-Gateway-Source,atm-api-gateway  # Helpful for tracing
+
 eureka:
   client:
     service-url:
       defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    # Explicitly register the actual port where /actuator/prometheus is available
+    non-secure-port: ${server.port}
+    metadata-map:
+      # These help with Prometheus discovery
+      prometheus.path: /actuator/prometheus
+      management.port: ${server.port}
 
+# Expose Prometheus metrics endpoint
 management:
+  tracing:
+    sampling:
+      probability: 1.0
+    baggage:
+      remote-fields: "*"
+      correlation:
+        fields: "*"
+  otlp:
+    metrics:
+      export:
+        url: http://localhost:4318/v1/metrics
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
   endpoints:
     web:
       exposure:
-        include: prometheus
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 
 server:

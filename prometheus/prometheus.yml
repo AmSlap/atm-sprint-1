@@ -8,33 +8,40 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Eureka Server monitoring
+  # Eureka Server monitoring (static port)
   - job_name: 'eureka-server'
     metrics_path: '/actuator/prometheus'
     static_configs:
       - targets: ['host.docker.internal:8761']
 
-  # All services discovered through Eureka
+  # API Gateway monitoring (static port)
+  - job_name: 'api-gateway'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8082']
+
+  # Dynamic services discovered through Eureka
   - job_name: 'eureka-services'
     metrics_path: '/actuator/prometheus'
     eureka_sd_configs:
       - server: 'http://host.docker.internal:8761/eureka'
         refresh_interval: 15s
     relabel_configs:
-      # Set application name from Eureka metadata
+      # Set application name
       - source_labels: ['__meta_eureka_app_name']
         target_label: 'application'
-        regex: '(.+)'
-        replacement: '${1}'
 
-      # Create instance label from hostname and port
-      - source_labels: ['__meta_eureka_app_instance_hostname', '__meta_eureka_app_instance_port']
+      # Extract port from Eureka metadata
+      - source_labels: ['__meta_eureka_app_instance_port']
+        target_label: 'eureka_port'
+
+      # THIS IS THE CRITICAL FIX - hardcode host.docker.internal with the port
+      - source_labels: ['__meta_eureka_app_instance_port']
+        target_label: '__address__'
+        regex: '(.+)'
+        replacement: 'host.docker.internal:${1}'
+
+      # Add instance label for display purposes
+      - source_labels: ['__meta_eureka_app_instance_hostName', '__meta_eureka_app_name', '__meta_eureka_app_instance_port']
         separator: ':'
         target_label: 'instance'
-        regex: '(.+):(.+)'
-        replacement: '${1}:${2}'
-
-      # Keep only services that have Prometheus metrics enabled
-      - source_labels: ['__meta_eureka_app_instance_metadata_prometheus_enabled']
-        regex: 'true'
-        action: keep

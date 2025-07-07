@@ -36,9 +36,7 @@ public class AtmStateListener {
             subscriptionType = SubscriptionType.Exclusive
     )
     public void consumeAtmConfigurationMessage(AtmConfigurationChangedEvent event) {
-        log.info("Received ATM Configuration change: {}", event.getAtmId());
-        log.info("the config: {}", event.getPeripherals());
-
+        log.info("Received health {}", event.getOverallHealth());
         configurationHandlerService.processConfigurationChange(event);
 
     }

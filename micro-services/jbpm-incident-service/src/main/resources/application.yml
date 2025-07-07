@@ -30,12 +30,12 @@ pulsar:
 
 kie:
     server:
-        url: http://localhost:9090/kie-server/services/rest/server
+        url: http://localhost:9091/kie-server/services/rest/server
         username: wbadmin
         password: wbadmin
         timeout: 30000
     container:
-      id: Incident-Management_1.0.0-SNAPSHOT
+      id: IncidentManagement_1.0.0-SNAPSHOT
     process:
       id: IncidentManagement.IncidentManagementProcess
 server:
@@ -56,3 +56,9 @@ logging:
     # Keep Hibernate logging if useful
     org.hibernate.SQL: INFO # Or DEBUG
     # org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus

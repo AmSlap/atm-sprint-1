@@ -6,7 +6,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import ma.atm.atmstateservice.event.AtmConfigurationChangedEvent;
 import ma.atm.atmstateservice.model.AtmConfiguration;
+import ma.atm.atmstateservice.model.AtmStatus;
 import ma.atm.atmstateservice.repository.AtmConfigurationRepository;
+import ma.atm.atmstateservice.repository.AtmStatusRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,12 +23,14 @@ public class ConfigurationHandlerService {
 
     private final AtmConfigurationRepository atmConfigurationRepository;
     private final ObjectMapper objectMapper;
+    private final AtmStatusRepository atmStatusRepository;
 
     @Autowired
     public ConfigurationHandlerService(AtmConfigurationRepository atmConfigurationRepository,
-                                       ObjectMapper objectMapper) {
+                                       ObjectMapper objectMapper, AtmStatusRepository atmStatusRepository) {
         this.atmConfigurationRepository = atmConfigurationRepository;
         this.objectMapper = objectMapper;
+        this.atmStatusRepository = atmStatusRepository;
     }
 
 
@@ -62,9 +66,9 @@ public class ConfigurationHandlerService {
 
         // Calculate overall health based on the new peripheral details.
         if (newPeripheralDetails != null) {
-            configuration.setOverallHealth(calculateOverallHealth(newPeripheralDetails));
+            configuration.setOverallHealth(calculateOverallHealth(event.getAtmId()));
         } else {
-            configuration.setOverallHealth("UNKNOWN"); // Or some default value.
+            configuration.setOverallHealth("GRAY"); // Or some default value.
         }
 
         configuration.setLastUpdateTimestamp(event.getTimestamp() != null ?
@@ -74,43 +78,16 @@ public class ConfigurationHandlerService {
         log.info("Successfully processed and updated configuration change for ATM: {}", event.getAtmId());
     }
 
-    private String calculateOverallHealth(Map<String, Object> peripheralDetails) {
-        boolean hasCriticalFailure = false;
-        boolean hasWarning = false;
+    private String calculateOverallHealth(String atmId) {
+        AtmStatus atmStatus = atmStatusRepository.findById(atmId)
+                .orElseThrow(() -> new RuntimeException("ATM status not found for ATM ID: " + atmId));
+        return switch (atmStatus.getOperationalState()) {
+            case "Good", "Working" -> "GREEN";
+            case "Maintenance" -> "ORANGE";
+            case "OutOfService" -> "RED";
+            default -> "GRAY"; // Default state if none of the above match
+        };
 
-        if (peripheralDetails != null) {
-            for (Map.Entry<String, Object> entry : peripheralDetails.entrySet()) {
-                String componentKey = entry.getKey().toLowerCase();
-                Object value = entry.getValue();
-
-                if (value instanceof Map) {
-                    Map<?, ?> peripheral = (Map<?, ?>) value;
-                    Object statusObj = peripheral.get("status");
-
-                    if (statusObj != null) {
-                        String status = statusObj.toString().toUpperCase();
-
-                        // Check if status indicates failure
-                        boolean isCriticalStatus = status.matches(".*(CRITICAL|DOWN|ERROR|FAILED|FAULT|JAMMED|OFFLINE).*");
-                        boolean isWarningStatus = status.matches(".*(WARNING|LOW|DEGRADED|PARTIAL).*");
-
-                        if (isCriticalStatus) {
-                            // Only critical components cause RED status
-                            if (isCriticalComponent(componentKey)) {
-                                hasCriticalFailure = true;
-                                break;
-                            } else {
-                                hasWarning = true; // Non-critical component = warning only
-                            }
-                        } else if (isWarningStatus) {
-                            hasWarning = true;
-                        }
-                    }
-                }
-            }
-        }
-
-        return hasCriticalFailure ? "RED" : (hasWarning ? "ORANGE" : "GREEN");
     }
 
     /**

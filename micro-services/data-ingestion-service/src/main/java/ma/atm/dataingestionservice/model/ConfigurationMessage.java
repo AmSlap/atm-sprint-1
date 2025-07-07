@@ -22,4 +22,7 @@ public class ConfigurationMessage extends BaseAtmMessage {
     // Value: Another Map or a specific object representing the peripheral's status details
     @JsonProperty("peripherals")
     private Map<String, Object> peripherals;
+
+    @JsonProperty("overallHealth")
+    private String overallHealth; // e.g., "GREEN", "ORANGE", "RED"
 }

@@ -23,6 +23,12 @@ pulsar:
     transaction-topic: internal-atm-transaction-events
     incident-topic: internal-atm-incident-events
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus
+
 
 server:
   port: 8083

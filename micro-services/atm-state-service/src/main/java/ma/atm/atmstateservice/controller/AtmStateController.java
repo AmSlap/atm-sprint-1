@@ -115,7 +115,7 @@ public class AtmStateController {
             return new AtmStateSummaryDto(
                     atmId,
                     status != null ? status.getOperationalState() : "UNKNOWN",
-                    config != null ? config.getOverallHealth() : "UNKNOWN",
+                    config != null ? config.getOverallHealth() : "controller",
                     counter != null ? counter.getLowCashFlag() : null,
                     lastUpdate
             );

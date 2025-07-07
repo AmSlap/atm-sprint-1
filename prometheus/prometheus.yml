@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Eureka Server monitoring
+  - job_name: 'eureka-server'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['host.docker.internal:8761']
+
+  # All services discovered through Eureka
+  - job_name: 'eureka-services'
+    metrics_path: '/actuator/prometheus'
+    eureka_sd_configs:
+      - server: 'http://host.docker.internal:8761/eureka'
+        refresh_interval: 15s
+    relabel_configs:
+      # Set application name from Eureka metadata
+      - source_labels: ['__meta_eureka_app_name']
+        target_label: 'application'
+        regex: '(.+)'
+        replacement: '${1}'
+
+      # Create instance label from hostname and port
+      - source_labels: ['__meta_eureka_app_instance_hostname', '__meta_eureka_app_instance_port']
+        separator: ':'
+        target_label: 'instance'
+        regex: '(.+):(.+)'
+        replacement: '${1}:${2}'
+
+      # Keep only services that have Prometheus metrics enabled
+      - source_labels: ['__meta_eureka_app_instance_metadata_prometheus_enabled']
+        regex: 'true'
+        action: keep

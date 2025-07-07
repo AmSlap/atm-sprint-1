@@ -30,7 +30,7 @@ public class AtmConfiguration {
     private Map<String, Object> peripheralDetails; // Using Jackson's JsonNode to represent the JSON
 
     // Optional: You might still want a calculated overall health field
-    @Column(name = "overall_health")
+    @Column(name = "overallHealth")
     private String overallHealth; // e.g., "GREEN", "ORANGE", "RED"
 
     @Column(name = "last_update_timestamp", nullable = false)

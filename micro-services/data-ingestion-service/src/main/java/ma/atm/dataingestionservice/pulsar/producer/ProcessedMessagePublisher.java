@@ -93,7 +93,6 @@ public class ProcessedMessagePublisher {
     }
 
     public void publishIncidentEvent(IncidentMessage message) {
-        log.info("dkhlt ");
         try {
             log.info("Publishing incident message to topic {}: {}", incident_topic, message);
             // Assuming you have a PulsarTemplate for IncidentMessage

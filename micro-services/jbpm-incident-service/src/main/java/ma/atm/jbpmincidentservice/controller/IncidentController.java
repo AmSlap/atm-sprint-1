@@ -165,53 +165,6 @@ public class IncidentController {
 
     // ====================== TASK MANAGEMENT ENDPOINTS ======================
 
-    /**
-     * Get tasks for potential owners (by group)
-     * GET /api/incidents/tasks/available?group=helpdesk
-     */
-
-    @GetMapping("/tasks/available")
-    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getAvailableTasks(
-            @RequestParam(required = false) String group) {
-        try {
-            // Change return type from raw Map to IncidentTaskDto
-            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksForPotentialOwners(group);
-
-            List<IncidentTaskDto> tasks = jbpmTasks.stream()
-                    .map(incidentProcessService::convertJbpmTaskToDto)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(ApiResponse.success(tasks, "Available tasks retrieved successfully"));
-
-        } catch (Exception e) {
-            log.error("Error retrieving available tasks", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(ApiResponse.error("Failed to retrieve tasks: " + e.getMessage()));
-        }
-    }
-
-    /**
-     * Get user's tasks
-     * GET /api/incidents/tasks/my-tasks?user=AmSlap
-     */
-    @GetMapping("/tasks/my-tasks")
-    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getUserTasks(@RequestParam String user) {
-        try {
-            // Change from database to jBPM direct
-            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksOwnedByUser(user, 0, 100);
-
-            List<IncidentTaskDto> tasks = jbpmTasks.stream()
-                    .map(incidentProcessService::convertJbpmTaskToDto)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(ApiResponse.success(tasks, "User tasks retrieved successfully"));
-
-        } catch (Exception e) {
-            log.error("Error retrieving user tasks for: {}", user, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(ApiResponse.error("Failed to retrieve user tasks: " + e.getMessage()));
-        }
-    }
 
     /**
      * Get group's tasks
@@ -567,5 +520,104 @@ public class IncidentController {
         }
     }
 
+
+    /**
+     * Get available tasks with incident context
+     * GET /api/incidents/tasks/available-with-context?group=helpdesk
+     */
+    @GetMapping("/tasks/available-with-context")
+    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getAvailableTasksWithContext(
+            @RequestParam(required = false) String group) {
+        try {
+            List<IncidentTaskDto> tasks = incidentProcessService.getAvailableTasksWithContext(group);
+            return ResponseEntity.ok(ApiResponse.success(tasks, "Available tasks with incident context retrieved successfully"));
+
+        } catch (Exception e) {
+            log.error("Error retrieving available tasks with context", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to retrieve tasks with context: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get group tasks with incident context
+     * GET /api/incidents/tasks/group/{group}/with-context
+     */
+    @GetMapping("/tasks/group/{group}/with-context")
+    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getGroupTasksWithContext(@PathVariable String group) {
+        try {
+            List<IncidentTaskDto> tasks = incidentProcessService.getGroupTasksWithContext(group);
+            return ResponseEntity.ok(ApiResponse.success(tasks, "Group tasks with incident context retrieved successfully"));
+
+        } catch (Exception e) {
+            log.error("Error retrieving group tasks with context for group: {}", group, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to retrieve group tasks with context: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get user tasks with incident context
+     * GET /api/incidents/tasks/user/{user}/with-context
+     */
+    @GetMapping("/tasks/user/{user}/with-context")
+    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getUserTasksWithContext(@PathVariable String user) {
+        try {
+            List<IncidentTaskDto> tasks = incidentProcessService.getUserTasksWithContext(user);
+            return ResponseEntity.ok(ApiResponse.success(tasks, "User tasks with incident context retrieved successfully"));
+
+        } catch (Exception e) {
+            log.error("Error retrieving user tasks with context for user: {}", user, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to retrieve user tasks with context: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Enhanced: Get available tasks (backward compatible but now includes incident context)
+     * GET /api/incidents/tasks/available?group=helpdesk
+     */
+    @GetMapping("/tasks/available")
+    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getAvailableTasks(
+            @RequestParam(required = false) String group) {
+        try {
+            // Get jBPM tasks and convert with incident context
+            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksForPotentialOwners(group);
+
+            List<IncidentTaskDto> tasks = jbpmTasks.stream()
+                    .map(incidentProcessService::convertJbpmTaskToDtoWithIncident)
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(ApiResponse.success(tasks, "Available tasks retrieved successfully"));
+
+        } catch (Exception e) {
+            log.error("Error retrieving available tasks", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to retrieve tasks: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Enhanced: Get user's tasks (backward compatible but now includes incident context)
+     * GET /api/incidents/tasks/my-tasks?user=AmSlap
+     */
+    @GetMapping("/tasks/my-tasks")
+    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getUserTasks(@RequestParam String user) {
+        try {
+            // Get jBPM tasks and convert with incident context
+            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksOwnedByUser(user, 0, 100);
+
+            List<IncidentTaskDto> tasks = jbpmTasks.stream()
+                    .map(incidentProcessService::convertJbpmTaskToDtoWithIncident)
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(ApiResponse.success(tasks, "User tasks retrieved successfully"));
+
+        } catch (Exception e) {
+            log.error("Error retrieving user tasks for user: {}", user, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to retrieve user tasks: " + e.getMessage()));
+        }
+    }
 
 }

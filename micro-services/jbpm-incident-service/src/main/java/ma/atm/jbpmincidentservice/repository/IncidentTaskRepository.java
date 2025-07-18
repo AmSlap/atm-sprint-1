@@ -39,4 +39,18 @@ public interface IncidentTaskRepository extends JpaRepository<IncidentTask, Long
 
     @Query("SELECT COUNT(t) FROM IncidentTask t WHERE t.assignedGroup = :group AND t.status = :status")
     Long countByAssignedGroupAndStatus(@Param("group") String group, @Param("status") TaskStatus status);
+
+
+    @Query("SELECT t FROM IncidentTask t JOIN FETCH t.incident i WHERE t.assignedGroup = :group AND t.status IN :statuses ORDER BY t.createdAt DESC")
+    List<IncidentTask> findByAssignedGroupAndStatusInWithIncident(@Param("group") String group, @Param("statuses") List<TaskStatus> statuses);
+
+    @Query("SELECT t FROM IncidentTask t JOIN FETCH t.incident i WHERE t.assignedUser = :user AND t.status IN :statuses ORDER BY t.createdAt DESC")
+    List<IncidentTask> findByAssignedUserAndStatusInWithIncident(@Param("user") String user, @Param("statuses") List<TaskStatus> statuses);
+
+    @Query("SELECT t FROM IncidentTask t JOIN FETCH t.incident i WHERE t.status IN :statuses ORDER BY t.createdAt DESC")
+    List<IncidentTask> findByStatusInWithIncident(@Param("statuses") List<TaskStatus> statuses);
+
+    @Query("SELECT t FROM IncidentTask t JOIN FETCH t.incident i WHERE t.taskInstanceId = :taskInstanceId")
+    Optional<IncidentTask> findByTaskInstanceIdWithIncident(@Param("taskInstanceId") Long taskInstanceId);
 }
+

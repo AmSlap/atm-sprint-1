@@ -104,7 +104,6 @@ public class IncidentProcessService {
                     .build();
 
             incident = incidentRepository.save(incident);
-            getTasksForPotentialOwners("helpdesk"); // Initialize tasks for helpdesk group
 
             LOGGER.info("Started incident process for ATM: {}, Process Instance ID: {}, Incident Number: {}",
                     atmId, processInstanceId, incident.getIncidentNumber());
@@ -754,7 +753,7 @@ public class IncidentProcessService {
                         .taskInstanceId(taskInstanceId)
                         .taskName((String) taskData.get("task-name"))
                         .taskDescription((String) taskData.get("task-description"))
-                        .assignedGroup(extractPotentialGroup(taskData))
+                        .assignedGroup(group != null ? group : "unknown")
                         .status(mapJbpmStatusToTaskStatus((String) taskData.get("task-status")))
                         .priority((Integer) taskData.get("task-priority"))
                         .createdAt(LocalDateTime.now(ZoneOffset.UTC))
@@ -1060,6 +1059,7 @@ public class IncidentProcessService {
                 .inputData(task.getInputData())
                 .outputData(task.getOutputData())
                 .comments(task.getComments())
+                .incidentId(task.getIncident().getIncidentNumber())
                 .build();
     }
 
@@ -1144,132 +1144,4 @@ public class IncidentProcessService {
     }
 
 
-    /**
-     * Get available tasks with incident context (enhanced method)
-     */
-    @Transactional
-    public List<IncidentTaskDto> getAvailableTasksWithContext(String group) {
-        List<TaskStatus> availableStatuses = List.of(TaskStatus.READY, TaskStatus.RESERVED);
-
-        List<IncidentTask> tasks;
-        if (group != null && !group.isEmpty()) {
-            tasks = taskRepository.findByAssignedGroupAndStatusInWithIncident(group, availableStatuses);
-        } else {
-            tasks = taskRepository.findByStatusInWithIncident(availableStatuses);
-        }
-
-        return tasks.stream()
-                .map(this::convertToTaskDtoWithIncident)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get group tasks with incident context (enhanced method)
-     */
-    @Transactional
-    public List<IncidentTaskDto> getGroupTasksWithContext(String group) {
-        List<TaskStatus> activeStatuses = List.of(TaskStatus.READY, TaskStatus.RESERVED, TaskStatus.IN_PROGRESS);
-        return taskRepository.findByAssignedGroupAndStatusInWithIncident(group, activeStatuses)
-                .stream()
-                .map(this::convertToTaskDtoWithIncident)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Get user tasks with incident context (enhanced method)
-     */
-    @Transactional
-    public List<IncidentTaskDto> getUserTasksWithContext(String user) {
-        List<TaskStatus> activeStatuses = List.of(TaskStatus.READY, TaskStatus.RESERVED, TaskStatus.IN_PROGRESS);
-        return taskRepository.findByAssignedUserAndStatusInWithIncident(user, activeStatuses)
-                .stream()
-                .map(this::convertToTaskDtoWithIncident)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Enhanced method to convert jBPM task data to IncidentTaskDto with incident context
-     */
-    public IncidentTaskDto convertJbpmTaskToDtoWithIncident(Map<String, Object> jbpmTask) {
-        try {
-            Long taskInstanceId = convertToLong(jbpmTask.get("task-id"));
-            Long processInstanceId = convertToLong(jbpmTask.get("task-proc-inst-id"));
-
-            // Get incident context
-            Incident incident = incidentRepository.findByProcessInstanceId(processInstanceId)
-                    .orElse(null);
-
-            // Parse jBPM date format
-            LocalDateTime createdAt = parseJbpmDate(jbpmTask.get("task-created-on"));
-            LocalDateTime activationTime = parseJbpmDate(jbpmTask.get("task-activation-time"));
-            LocalDateTime expirationTime = parseJbpmDate(jbpmTask.get("task-expiration-time"));
-
-            IncidentTaskDto.IncidentTaskDtoBuilder builder = IncidentTaskDto.builder()
-                    .taskInstanceId(taskInstanceId)
-                    .taskName((String) jbpmTask.get("task-name"))
-                    .taskDescription((String) jbpmTask.get("task-description"))
-                    .assignedGroup(extractPotentialGroup(jbpmTask))
-                    .assignedUser((String) jbpmTask.get("task-actual-owner"))
-                    .status(mapJbpmStatusToTaskStatus((String) jbpmTask.get("task-status")))
-                    .priority((Integer) jbpmTask.get("task-priority"))
-                    .createdAt(createdAt)
-                    .dueDate(expirationTime);
-
-            // Add incident context if available
-            if (incident != null) {
-                builder.incidentId(incident.getId())
-                        .incidentNumber(incident.getIncidentNumber())
-                        .atmId(incident.getAtmId())
-                        .errorType(incident.getErrorType())
-                        .incidentDescription(incident.getIncidentDescription())
-                        .incidentStatus(incident.getStatus())
-                        .incidentType(incident.getIncidentType())
-                        .incidentCreatedAt(incident.getCreatedAt())
-                        .incidentCreatedBy(incident.getCreatedBy());
-            }
-
-            return builder.build();
-
-        } catch (Exception e) {
-            LOGGER.error("Error converting jBPM task to DTO with incident context: {}", jbpmTask, e);
-            throw new RuntimeException("Failed to convert jBPM task data with incident context", e);
-        }
-    }
-
-    /**
-     * Enhanced method to convert IncidentTask entity to DTO with incident context
-     */
-    private IncidentTaskDto convertToTaskDtoWithIncident(IncidentTask task) {
-        Incident incident = task.getIncident();
-
-        return IncidentTaskDto.builder()
-                .id(task.getId())
-                .taskInstanceId(task.getTaskInstanceId())
-                .taskName(task.getTaskName())
-                .taskDescription(task.getTaskDescription())
-                .assignedGroup(task.getAssignedGroup())
-                .assignedUser(task.getAssignedUser())
-                .status(task.getStatus())
-                .priority(task.getPriority())
-                .createdAt(task.getCreatedAt())
-                .updatedAt(task.getUpdatedAt())
-                .claimedAt(task.getClaimedAt())
-                .startedAt(task.getStartedAt())
-                .completedAt(task.getCompletedAt())
-                .dueDate(task.getDueDate())
-                .inputData(task.getInputData())
-                .outputData(task.getOutputData())
-                .comments(task.getComments())
-                // Incident context
-                .incidentId(incident.getId())
-                .incidentNumber(incident.getIncidentNumber())
-                .atmId(incident.getAtmId())
-                .errorType(incident.getErrorType())
-                .incidentDescription(incident.getIncidentDescription())
-                .incidentStatus(incident.getStatus())
-                .incidentType(incident.getIncidentType())
-                .incidentCreatedAt(incident.getCreatedAt())
-                .incidentCreatedBy(incident.getCreatedBy())
-                .build();
-    }
 }

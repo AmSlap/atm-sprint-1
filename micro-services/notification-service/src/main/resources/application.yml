@@ -1,0 +1,49 @@
+spring:
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: amslap3.as@gmail.com
+    password: muzx smyj feqc vlnn   # Use App Password
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            trust: smtp.gmail.com
+          connectiontimeout: 5000
+          timeout: 5000
+  application:
+    name: notification-service
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/atm-notification-db
+    username: postgres
+    password: foo
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    # Schema Generation (Choose ONE strategy)
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  pulsar:
+    client:
+      service-url: pulsar://localhost:6650
+    consumer:
+      dead-letter-policy-max-redeliver-count: 3
+    admin:
+      service-url: http://localhost:9091
+pulsar:
+  consumer:
+    notification-topic: internal-atm-notification-events
+
+    subscription-name: atm-notification-service-subscription
+server:
+  port: 8087
+

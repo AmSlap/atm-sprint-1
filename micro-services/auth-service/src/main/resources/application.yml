@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: ATM-AUTH-SERVICE
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8180/realms/atm-monitoring-realm
+          jwt-set-uri: http://localhost:8180/realms/atm-monitoring-realm/protocol/openid-connect/certs
+
+
+
+
+
+
+keycloak:
+  auth-server-url: http://localhost:8180
+  realm: atm-monitoring-realm
+  resource: auth-service
+  credentials:
+    secret: V8ai5e68O8X8Y7LzZvpMkDOcpB11X7uW
+  admin-cli:
+    client-id: admin-cli
+    client-secret: fBGWIGtGXiIuvaOnLaJVWC5n9NfAT0DX
+  connection:
+    pool:
+      size: 10
+      timeout: 5000
+
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    # Explicitly register the actual port where /actuator/prometheus is available
+    non-secure-port: ${server.port}
+    metadata-map:
+      # These help with Prometheus discovery
+      prometheus.path: /actuator/prometheus
+      management.port: ${server.port}
+
+
+server:
+  port: 9180

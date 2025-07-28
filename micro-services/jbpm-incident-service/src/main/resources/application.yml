@@ -21,12 +21,18 @@ spring:
     consumer:
       dead-letter-policy-max-redeliver-count: 3
     admin:
-      service-url: http://localhost:8080
+      service-url: http://localhost:9091
 pulsar:
   consumer:
     incident-topic: internal-atm-incident-events
-
     subscription-name: atm-incident-service-subscription
+
+  producer:
+    notification-topic: internal-atm-notification-events
+
+
+
+
 
 kie:
     server:
@@ -96,3 +102,5 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+
+

@@ -14,6 +14,7 @@ import ma.atm.jbpmincidentservice.model.IncidentTask;
 import ma.atm.jbpmincidentservice.model.enums.IncidentStatus;
 import ma.atm.jbpmincidentservice.model.enums.IncidentType;
 import ma.atm.jbpmincidentservice.model.enums.TaskStatus;
+import ma.atm.jbpmincidentservice.pulsar.producer.NotificationProducer;
 import ma.atm.jbpmincidentservice.repository.IncidentRepository;
 import ma.atm.jbpmincidentservice.repository.IncidentTaskRepository;
 import org.slf4j.Logger;
@@ -50,12 +51,14 @@ public class IncidentProcessService {
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
+    private final NotificationProducer notificationProducer;
 
     // Database repositories
     private final IncidentRepository incidentRepository;
     private final IncidentTaskRepository taskRepository;
 
-    public IncidentProcessService(IncidentRepository incidentRepository, IncidentTaskRepository taskRepository) {
+    public IncidentProcessService(NotificationProducer notificationProducer, IncidentRepository incidentRepository, IncidentTaskRepository taskRepository) {
+        this.notificationProducer = notificationProducer;
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
         this.incidentRepository = incidentRepository;
@@ -104,6 +107,7 @@ public class IncidentProcessService {
                     .build();
 
             incident = incidentRepository.save(incident);
+            notificationProducer.publishNotification(incident);
 
             LOGGER.info("Started incident process for ATM: {}, Process Instance ID: {}, Incident Number: {}",
                     atmId, processInstanceId, incident.getIncidentNumber());
@@ -1041,6 +1045,8 @@ public class IncidentProcessService {
     }
 
     private IncidentTaskDto convertToTaskDto(IncidentTask task) {
+        Incident incident = task.getIncident();
+
         return IncidentTaskDto.builder()
                 .id(task.getId())
                 .taskInstanceId(task.getTaskInstanceId())
@@ -1059,7 +1065,19 @@ public class IncidentProcessService {
                 .inputData(task.getInputData())
                 .outputData(task.getOutputData())
                 .comments(task.getComments())
-                .incidentId(task.getIncident().getIncidentNumber())
+                .incidentId(incident.getIncidentNumber())
+
+                // Add incident context
+                .atmId(incident.getAtmId())
+                .incidentDescription(incident.getIncidentDescription())
+                .errorType(incident.getErrorType())
+                .incidentStatus(incident.getStatus())
+
+                // Add computed display fields
+                .displayName(String.format("%s - %s - %s",
+                        task.getTaskName(), incident.getAtmId(), incident.getErrorType()))
+                .contextSummary(String.format("%s: %s",
+                        incident.getAtmId(), incident.getIncidentDescription()))
                 .build();
     }
 
@@ -1143,5 +1161,153 @@ public class IncidentProcessService {
         return "unknown";
     }
 
+
+
+    /**
+     * Get tasks for potential owners with incident context
+     * This replaces the direct jBPM call with database-enriched data
+     */
+    @Transactional
+    public List<IncidentTaskDto> getTasksForPotentialOwnersWithContext(String group) {
+        try {
+            // Get fresh tasks from jBPM
+            List<Map<String, Object>> jbpmTasks = getTasksForPotentialOwners(group);
+
+            // Sync with database and return enriched tasks
+            return syncAndEnrichTasks(jbpmTasks, group);
+
+        } catch (Exception e) {
+            LOGGER.error("Error retrieving tasks with context for group: {}", group, e);
+            // Fallback to database-only data
+            return getGroupTasks(group);
+        }
+    }
+
+    /**
+     * Get user's owned tasks with incident context
+     */
+    @Transactional
+    public List<IncidentTaskDto> getUserTasksWithContext(String user) {
+        try {
+            // Get fresh tasks from jBPM
+            List<Map<String, Object>> jbpmTasks = getTasksOwnedByUser(user, 0, 100);
+
+            // Sync with database and return enriched tasks
+            return syncAndEnrichUserTasks(jbpmTasks, user);
+
+        } catch (Exception e) {
+            LOGGER.error("Error retrieving user tasks with context for: {}", user, e);
+            // Fallback to database-only data
+            return getUserTasks(user);
+        }
+    }
+
+    /**
+     * Sync jBPM tasks with database and return enriched DTOs
+     */
+    private List<IncidentTaskDto> syncAndEnrichTasks(List<Map<String, Object>> jbpmTasks, String group) {
+        List<IncidentTaskDto> enrichedTasks = new ArrayList<>();
+
+        for (Map<String, Object> jbpmTask : jbpmTasks) {
+            Long taskInstanceId = convertToLong(jbpmTask.get("task-id"));
+
+            // Find or create task in database
+            IncidentTask dbTask = syncTaskWithDatabase(jbpmTask, group);
+
+            // Convert to DTO with full context
+            if (dbTask != null) {
+                IncidentTaskDto dto = convertToTaskDto(dbTask);
+                // Add real-time jBPM status
+                dto.setCurrentJbpmStatus((String) jbpmTask.get("task-status"));
+                enrichedTasks.add(dto);
+            }
+        }
+
+        return enrichedTasks;
+    }
+
+    /**
+     * Sync user tasks with database
+     */
+    private List<IncidentTaskDto> syncAndEnrichUserTasks(List<Map<String, Object>> jbpmTasks, String user) {
+        List<IncidentTaskDto> enrichedTasks = new ArrayList<>();
+
+        for (Map<String, Object> jbpmTask : jbpmTasks) {
+            Long taskInstanceId = convertToLong(jbpmTask.get("task-id"));
+
+            // First find the existing task in database
+            Optional<IncidentTask> existingTaskOpt = taskRepository.findByTaskInstanceId(taskInstanceId);
+
+            if (existingTaskOpt.isPresent()) {
+                IncidentTask existingTask = existingTaskOpt.get();
+
+                // Update existing task with jBPM data
+                IncidentTask dbTask = updateTaskFromJbpmData(existingTask, jbpmTask);
+
+                if (dbTask != null) {
+                    IncidentTaskDto dto = convertToTaskDto(dbTask);
+                    dto.setCurrentJbpmStatus((String) jbpmTask.get("task-status"));
+                    enrichedTasks.add(dto);
+                }
+            } else {
+                // If task doesn't exist in database, track it first
+                trackTaskIfNotExists(jbpmTask, user);
+
+                // Then try to find it again
+                taskRepository.findByTaskInstanceId(taskInstanceId)
+                        .ifPresent(task -> {
+                            IncidentTaskDto dto = convertToTaskDto(task);
+                            dto.setCurrentJbpmStatus((String) jbpmTask.get("task-status"));
+                            enrichedTasks.add(dto);
+                        });
+            }
+        }
+
+        return enrichedTasks;
+    }
+
+    /**
+     * Sync individual task with database
+     */
+    private IncidentTask syncTaskWithDatabase(Map<String, Object> jbpmTask, String group) {
+        Long taskInstanceId = convertToLong(jbpmTask.get("task-id"));
+        Long processInstanceId = convertToLong(jbpmTask.get("task-proc-inst-id"));
+
+        // Try to find existing task
+        Optional<IncidentTask> existingTask = taskRepository.findByTaskInstanceId(taskInstanceId);
+
+        if (existingTask.isPresent()) {
+            // Update existing task with fresh jBPM data
+            IncidentTask task = existingTask.get();
+            updateTaskFromJbpmData(task, jbpmTask);
+            return taskRepository.save(task);
+        } else {
+            // Create new task if it doesn't exist
+            trackTaskIfNotExists(jbpmTask, group);
+            return taskRepository.findByTaskInstanceId(taskInstanceId).orElse(null);
+        }
+    }
+
+    /**
+     * Update task from jBPM data
+     */
+    private IncidentTask updateTaskFromJbpmData(IncidentTask task, Map<String, Object> jbpmTask) {
+        String jbmpStatus = (String) jbpmTask.get("task-status");
+        TaskStatus newStatus = mapJbpmStatusToTaskStatus(jbmpStatus);
+
+        // Update status if changed
+        if (task.getStatus() != newStatus) {
+            task.setStatus(newStatus);
+            task.setUpdatedAt(LocalDateTime.now());
+        }
+
+        // Update assigned user if changed
+        String actualOwner = (String) jbpmTask.get("task-actual-owner");
+        if (actualOwner != null && !actualOwner.equals(task.getAssignedUser())) {
+            task.setAssignedUser(actualOwner);
+        }
+
+        return task;
+    }
 
 }

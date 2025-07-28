@@ -128,6 +128,8 @@ services:
     image: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
     environment:
       POSTGRES_DB: jbpm
       POSTGRES_USER: jbpm
@@ -205,6 +207,23 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: keycloak
+    environment:
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+      - KC_DB=dev-file
+    command: start-dev
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+    ports:
+      - "8180:8080"
+    networks:
+      - monitoring
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 
 volumes:
   pulsar_manager_data:
@@ -212,3 +231,4 @@ volumes:
   jdata:
   loki_data:
   tempo_data:
+  keycloak_data:

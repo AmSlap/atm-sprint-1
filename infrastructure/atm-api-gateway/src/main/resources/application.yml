@@ -1,6 +1,15 @@
 spring:
   application:
     name: atm-api-gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8180/realms/atm-monitoring-realm
+          jwt-set-uri: http://localhost:8180/realms/atm-monitoring-realm/protocol/openid-connect/certs
+
+
+
   cloud:
     gateway:
       routes:
@@ -8,14 +17,26 @@ spring:
           uri: lb://ATM-REGISTRY-SERVICE
           predicates:
             - Path=/api/registry/atms/**
+
         - id: atm-registry-agencies
           uri: lb://ATM-REGISTRY-SERVICE
           predicates:
             - Path=/api/registry/agencies/**
+
         - id: atm-state-service
           uri: lb://ATM-STATE-SERVICE
           predicates:
             - Path=/api/state/atms/**
+
+        - id: atm-auth-service
+          uri: lb://ATM-AUTH-SERVICE
+          predicates:
+            - Path=/api/auth/**
+
+        - id: jbpm-incident-service
+          uri: lb://JBPM-INCIDENT-SERVICE
+          predicates:
+            - Path=/api/incidents/**
       server:
         webflux:
           default-filters:
@@ -57,6 +78,11 @@ management:
     tags:
       application: ${spring.application.name}
 
+logging:
+  level:
+    org.springframework.security: DEBUG
+    org.springframework.cloud.gateway: DEBUG
+    org.springframework.cloud.loadbalancer: DEBUG
 
 server:
   port: 8082

@@ -9,7 +9,7 @@ spring:
     consumer:
       dead-letter-policy-max-redeliver-count: 3
     admin:
-      service-url: http://localhost:8080
+      service-url: http://localhost:9091
 
 pulsar:
   consumer:
@@ -22,6 +22,9 @@ pulsar:
     counter-topic: internal-atm-counter-events
     transaction-topic: internal-atm-transaction-events
     incident-topic: internal-atm-incident-events
+    notification-topic: internal-atm-notification-events
+
+
 
 management:
   endpoints:

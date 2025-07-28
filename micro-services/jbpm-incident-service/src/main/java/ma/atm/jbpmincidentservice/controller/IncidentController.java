@@ -89,19 +89,7 @@ public class IncidentController {
                     .body(ApiResponse.error("Failed to retrieve incidents: " + e.getMessage()));
         }
     }
-    @GetMapping("/tasks/db")
-    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getTasksFromDatabase() {
-        try {
-            List<IncidentTaskDto> tasks = incidentProcessService.getGroupTasks("helpdesk");
 
-            return ResponseEntity.ok(ApiResponse.success(tasks, "Tasks retrieved successfully"));
-
-        } catch (Exception e) {
-            log.error("Error retrieving tasks from database", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(ApiResponse.error("Failed to retrieve tasks: " + e.getMessage()));
-        }
-    }
 
     /**
      * Get incident by ID
@@ -179,6 +167,24 @@ public class IncidentController {
     // ====================== TASK MANAGEMENT ENDPOINTS ======================
 
     /**
+     * Get task details
+     * GET /api/incidents/tasks/{taskInstanceId}
+     */
+    @GetMapping("/tasks/{taskInstanceId}")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskDetails(@PathVariable Long taskInstanceId) {
+        try {
+            Map<String, Object> taskDetails = incidentProcessService.getTaskInstance(taskInstanceId);
+
+            return ResponseEntity.ok(ApiResponse.success(taskDetails, "Task details retrieved successfully"));
+
+        } catch (Exception e) {
+            log.error("Error retrieving task details: {}", taskInstanceId, e);
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.error("Task not found: " + e.getMessage()));
+        }
+    }
+
+    /**
      * Get tasks for potential owners (by group)
      * GET /api/incidents/tasks/available?group=helpdesk
      */
@@ -210,12 +216,8 @@ public class IncidentController {
     @GetMapping("/tasks/my-tasks")
     public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getUserTasks(@RequestParam String user) {
         try {
-            // Change from database to jBPM direct
-            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksOwnedByUser(user, 0, 100);
+            List<IncidentTaskDto> tasks = incidentProcessService.getUserTasksWithContext(user);
 
-            List<IncidentTaskDto> tasks = jbpmTasks.stream()
-                    .map(incidentProcessService::convertJbpmTaskToDto)
-                    .collect(Collectors.toList());
 
             return ResponseEntity.ok(ApiResponse.success(tasks, "User tasks retrieved successfully"));
 
@@ -234,13 +236,8 @@ public class IncidentController {
     @GetMapping("/tasks/group-tasks")
     public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getGroupTasks(@RequestParam String group) {
         try {
-            // Change from database to jBPM direct
-            List<Map<String, Object>> jbpmTasks = incidentProcessService.getTasksForPotentialOwners(group);
+            List<IncidentTaskDto> tasks = incidentProcessService.getTasksForPotentialOwnersWithContext(group);
 
-            List<IncidentTaskDto> tasks = jbpmTasks.stream()
-                    .map(incidentProcessService::convertJbpmTaskToDto)
-                    .collect(Collectors.toList());
-            log.info("Retrieved {} tasks for group: {}", tasks, group);
 
             return ResponseEntity.ok(ApiResponse.success(tasks, "Group tasks retrieved successfully"));
 
@@ -253,39 +250,9 @@ public class IncidentController {
 
 
 
-    @GetMapping("/tasks/user-tasks-by-status")
-    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getUserTasksByStatus(
-            @RequestParam String user,
-            @RequestParam TaskStatus status) {
-        try {
-            List<IncidentTaskDto> tasks = incidentProcessService.getUserTasksByStatus(user, status);
 
-            return ResponseEntity.ok(ApiResponse.success(tasks, "User tasks by status retrieved successfully"));
 
-        } catch (Exception e) {
-            log.error("Error retrieving user tasks by status: {}", status, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(ApiResponse.error("Failed to retrieve user tasks by status: " + e.getMessage()));
-        }
-    }
 
-    /**
-     * Get task details
-     * GET /api/incidents/tasks/{taskInstanceId}
-     */
-    @GetMapping("/tasks/{taskInstanceId}")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getTaskDetails(@PathVariable Long taskInstanceId) {
-        try {
-            Map<String, Object> taskDetails = incidentProcessService.getTaskInstance(taskInstanceId);
-
-            return ResponseEntity.ok(ApiResponse.success(taskDetails, "Task details retrieved successfully"));
-
-        } catch (Exception e) {
-            log.error("Error retrieving task details: {}", taskInstanceId, e);
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(ApiResponse.error("Task not found: " + e.getMessage()));
-        }
-    }
 
     /**
      * Get task input data
@@ -302,6 +269,22 @@ public class IncidentController {
             log.error("Error retrieving task input data: {}", taskInstanceId, e);
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(ApiResponse.error("Task input data not found: " + e.getMessage()));
+        }
+    }
+
+    @GetMapping("/tasks/user-tasks-by-status")
+    public ResponseEntity<ApiResponse<List<IncidentTaskDto>>> getUserTasksByStatus(
+            @RequestParam String user,
+            @RequestParam TaskStatus status) {
+        try {
+            List<IncidentTaskDto> tasks = incidentProcessService.getUserTasksByStatus(user, status);
+
+            return ResponseEntity.ok(ApiResponse.success(tasks, "User tasks by status retrieved successfully"));
+
+        } catch (Exception e) {
+            log.error("Error retrieving user tasks by status: {}", status, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.error("Failed to retrieve user tasks by status: " + e.getMessage()));
         }
     }
 
